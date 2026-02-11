@@ -57,6 +57,7 @@
         .order-card{background:var(--surface);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all 0.15s;border:2px solid transparent}
         .order-card:active{transform:scale(0.98)} .order-card.claimed{border-color:var(--warning);opacity:0.6}
         .order-card.mine{border-color:var(--success)}
+        .order-card.completed{border-color:var(--success);opacity:0.7;background:rgba(74,222,128,0.08)}
         .order-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
         .order-card-car{font-weight:800;font-size:1.1rem} .order-card-id{font-size:0.8rem;color:var(--text-dim)}
         .order-card-time{font-size:0.8rem;color:var(--text-dim)}
@@ -88,8 +89,9 @@
         .section-label.weigh{color:var(--weigh-color)} .section-label.prep{color:var(--prep-color)}
         .work-item{background:var(--surface);border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer;transition:all 0.15s;border-left:4px solid var(--surface-light)}
         .work-item:active{transform:scale(0.98)}
-        .work-item.weigh-item{border-left-color:var(--weigh-color)} .work-item.prep-item{border-left-color:var(--prep-color)}
-        .work-item.done{opacity:0.5;background:rgba(74,222,128,0.1);border-left-color:var(--success)}
+        .work-item.weigh-item{border-left-color:var(--weigh-color);background:rgba(59,130,246,0.12);border:2px solid rgba(59,130,246,0.3);border-left:4px solid var(--weigh-color)}
+        .work-item.prep-item{border-left-color:var(--prep-color);background:rgba(139,92,246,0.08);border:2px solid rgba(139,92,246,0.2);border-left:4px solid var(--prep-color)}
+        .work-item.done{opacity:0.5;background:rgba(74,222,128,0.1);border-color:rgba(74,222,128,0.2);border-left-color:var(--success)}
         .work-item-top{display:flex;justify-content:space-between;align-items:center}
         .work-item-name{font-weight:700;font-size:1rem} .work-item-target{font-size:0.8rem;color:var(--text-dim)}
         .work-item-flavors{font-size:0.85rem;color:var(--text-dim);margin-top:2px}
@@ -429,9 +431,9 @@ async function fetchOrders(){
 // ===== ORDER LIST =====
 function renderOrderList(){
     const list=$('orderList');
-    const unclaimed=orders.filter(o=>!o.claimed_by);
-    const mine=orders.filter(o=>o.claimed_by&&currentEmployee&&o.claimed_by===currentEmployee.name);
-    const others=orders.filter(o=>o.claimed_by&&(!currentEmployee||o.claimed_by!==currentEmployee.name));
+    const unclaimed=orders.filter(o=>!o.claimed_by&&!o.completed_at);
+    const mine=orders.filter(o=>o.claimed_by&&!o.completed_at&&currentEmployee&&o.claimed_by===currentEmployee.name);
+    const others=orders.filter(o=>o.claimed_by&&!o.completed_at&&(!currentEmployee||o.claimed_by!==currentEmployee.name));
     $('orderCountBadge').textContent=unclaimed.length+mine.length;
     if(!orders.length){list.innerHTML='<div class="no-orders"><div class="icon">📋</div><div class="msg">No pending orders</div></div>';return;}
     let h='';
@@ -458,13 +460,31 @@ function renderOrderList(){
         h+='<div class="order-card claimed"><div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+'</div><div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+'</div></div>';
     });
+    const completed=orders.filter(o=>o.completed_at);
+    completed.forEach(o=>{
+        h+='<div class="order-card completed" data-order-id="'+o.order_id+'" data-completed="true">';
+        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
+        h+='<div class="order-card-id">'+o.order_id+'</div>';
+        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed — tap to reopen</div>';
+        h+='</div>';
+    });
     list.innerHTML=h;
     list.querySelectorAll('.order-card:not(.claimed)').forEach(c=>{c.addEventListener('click',()=>{
-        const oid=c.dataset.orderId;const o=orders.find(x=>x.order_id===oid);
+        const oid=c.dataset.orderId;
+        if(c.dataset.completed){reopenOrder(oid);return;}
+        const o=orders.find(x=>x.order_id===oid);
         if(o&&o.claimed_by===currentEmployee.name){resumeOrder(o);}else{claimOrder(oid);}
     });});
 }
 function orderAge(ts){const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
+
+// ===== REOPEN =====
+async function reopenOrder(id){
+    if(!confirm('Reopen this order for changes?'))return;
+    try{const r=await apiGet('reopenorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
+    if(r.success){const o=orders.find(x=>x.order_id===id);if(o){o.completed_at=null;o.claimed_by=currentEmployee.name;resumeOrder(o);}else{fetchOrders();}}
+    else{showToast(r.error||'Could not reopen',true);}}catch(e){showToast('Error reopening order',true);}
+}
 
 // ===== CLAIM =====
 async function claimOrder(id){
@@ -548,8 +568,8 @@ function updateCompleteBtn(){
     const btn=$('completeBtn'),total=workItems.length,done=workItems.filter(i=>i.done).length,rem=total-done;
     if(!total){btn.disabled=true;btn.textContent='NO ITEMS';return;}
     btn.disabled=false;
-    if(!rem){btn.className='complete-btn ready';btn.textContent='✓ COMPLETE ORDER';}
-    else{btn.className='complete-btn partial';btn.textContent='⚠ COMPLETE ('+rem+' not done)';}
+    if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}
+    else{btn.className='complete-btn partial';btn.textContent='⚠ Mark Complete ('+rem+' not done)';}
 }
 $('completeBtn').addEventListener('click',()=>{
     const rem=workItems.filter(i=>!i.done);if(rem.length)showSkipWarning(rem);else completeOrder();
