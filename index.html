@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1a1a2e">
+    <title>JJOPS Weigh Station</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+        :root{--bg:#1a1a2e;--surface:#4a2c6a;--surface-light:#5d3a80;--accent:#9b59b6;--success:#4ade80;--warning:#f59e0b;--danger:#ef4444;--text:#fff;--text-dim:#c9b8d9;--weigh-color:#3b82f6;--prep-color:#8b5cf6}
+        html,body{height:100%;overflow:hidden}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh;user-select:none}
+        .header{background:var(--surface);padding:8px 15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0}
+        .header h1{display:flex;align-items:center;gap:8px;font-size:1rem} .header h1 span{color:var(--accent)}
+        .employee-badge{background:var(--success);color:var(--bg);padding:6px 14px;border-radius:20px;font-size:0.85rem;font-weight:700}
+        .scale-indicator{padding:6px 12px;border-radius:20px;font-size:0.75rem;font-weight:700;background:rgba(255,255,255,0.1);color:var(--text-dim)}
+        .scale-indicator.connected{background:rgba(74,222,128,0.2);color:var(--success)}
+        .header-right{display:flex;align-items:center;gap:8px}
+        .logout-btn{background:var(--surface-light);color:var(--text);border:none;padding:6px 14px;border-radius:20px;font-size:0.8rem;font-weight:600;cursor:pointer}
+
+        /* PIN LOGIN */
+        .login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:15px;padding:20px}
+        .login-title{font-size:1.4rem;color:var(--accent);font-weight:700}
+        .login-subtitle{font-size:0.9rem;color:var(--text-dim);text-align:center}
+        .pin-display{display:flex;gap:12px;margin:10px 0}
+        .pin-dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--accent);background:transparent;transition:all 0.15s}
+        .pin-dot.filled{background:var(--accent);border-color:var(--accent)}
+        .pin-dot.error{border-color:var(--danger);background:var(--danger)}
+        .pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px;width:100%}
+        .pin-key{background:var(--surface);border:none;color:var(--text);font-size:1.5rem;font-weight:700;padding:18px;border-radius:12px;cursor:pointer;font-family:inherit;transition:all 0.1s}
+        .pin-key:active{background:var(--accent);transform:scale(0.95)}
+        .pin-key.backspace{font-size:1.2rem;color:var(--text-dim)}
+        .pin-key.zero{grid-column:2}
+        .pin-status{font-size:0.85rem;color:var(--warning);min-height:20px;text-align:center}
+
+        /* NAME INPUT */
+        .name-input-screen{display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:20px;padding:30px}
+        .name-input-screen.active{display:flex}
+        .name-input{width:100%;max-width:350px;padding:15px;border-radius:12px;border:2px solid var(--accent);background:var(--surface);color:var(--text);font-size:1.2rem;font-family:inherit;text-align:center}
+        .name-input::placeholder{color:var(--text-dim)}
+        .name-submit-btn{width:100%;max-width:350px;padding:16px;border-radius:12px;border:none;background:var(--success);color:var(--bg);font-size:1.1rem;font-weight:800;cursor:pointer;font-family:inherit}
+        .name-submit-btn:disabled{opacity:0.4;cursor:not-allowed}
+
+        .scale-connect-btn-login{background:var(--surface-light);border:2px solid var(--accent);color:var(--text);padding:10px 20px;border-radius:12px;font-size:0.9rem;font-weight:600;cursor:pointer}
+        .scale-connect-btn-login:disabled{opacity:0.5}
+
+        /* ORDER LIST */
+        .order-list-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
+        .order-list-screen.active{display:flex}
+        .order-list-header{padding:12px 15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1)}
+        .order-list-header h2{font-size:1.1rem}
+        .count-badge{background:var(--accent);color:white;padding:4px 12px;border-radius:20px;font-size:0.85rem;font-weight:700}
+        .order-list{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+        .order-card{background:var(--surface);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all 0.15s;border:2px solid transparent}
+        .order-card:active{transform:scale(0.98)} .order-card.claimed{border-color:var(--warning);opacity:0.6}
+        .order-card.mine{border-color:var(--success)}
+        .order-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+        .order-card-car{font-weight:800;font-size:1.1rem} .order-card-id{font-size:0.8rem;color:var(--text-dim)}
+        .order-card-time{font-size:0.8rem;color:var(--text-dim)}
+        .order-card-items{font-size:0.85rem;color:var(--text-dim);display:flex;gap:12px;flex-wrap:wrap;margin-top:4px}
+        .order-card-items .weigh-count{color:var(--weigh-color);font-weight:600}
+        .order-card-items .prep-count{color:var(--prep-color);font-weight:600}
+        .order-card-claimed{font-size:0.8rem;color:var(--warning);font-weight:600;margin-top:4px}
+        .order-card-notes{font-size:0.8rem;color:var(--warning);margin-top:4px;font-weight:600}
+        .no-orders{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);gap:10px}
+        .no-orders .icon{font-size:3rem} .no-orders .msg{font-size:1.1rem}
+        .poll-status{font-size:0.75rem;color:var(--text-dim);text-align:center;padding:8px}
+
+        /* ORDER WORK */
+        .order-work-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
+        .order-work-screen.active{display:flex}
+        .work-header{background:var(--surface);padding:10px 15px;border-bottom:1px solid rgba(255,255,255,0.1)}
+        .work-header-top{display:flex;justify-content:space-between;align-items:center}
+        .work-car{font-weight:800;font-size:1.2rem}
+        .work-back-btn{background:var(--surface-light);border:none;color:var(--text);padding:8px 14px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer}
+        .work-meta{font-size:0.8rem;color:var(--text-dim);margin-top:4px}
+        .work-notes{font-size:0.85rem;color:var(--warning);font-weight:600;margin-top:4px}
+        .scale-bar{background:var(--surface);padding:8px 15px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,0.1)}
+        .scale-weight{font-size:1.8rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:80px}
+        .scale-weight .unit{font-size:0.9rem;color:var(--text-dim);font-weight:600}
+        .scale-feedback{flex:1;text-align:center;font-weight:700;font-size:1rem}
+        .scale-connect-btn{background:var(--accent);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer}
+        .items-scroll{flex:1;overflow-y:auto;padding:10px}
+        .section-label{font-size:0.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 6px;display:flex;align-items:center;gap:8px}
+        .section-label.weigh{color:var(--weigh-color)} .section-label.prep{color:var(--prep-color)}
+        .work-item{background:var(--surface);border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer;transition:all 0.15s;border-left:4px solid var(--surface-light)}
+        .work-item:active{transform:scale(0.98)}
+        .work-item.weigh-item{border-left-color:var(--weigh-color)} .work-item.prep-item{border-left-color:var(--prep-color)}
+        .work-item.done{opacity:0.5;background:rgba(74,222,128,0.1);border-left-color:var(--success)}
+        .work-item-top{display:flex;justify-content:space-between;align-items:center}
+        .work-item-name{font-weight:700;font-size:1rem} .work-item-target{font-size:0.8rem;color:var(--text-dim)}
+        .work-item-flavors{font-size:0.85rem;color:var(--text-dim);margin-top:2px}
+        .work-item-note{font-size:0.8rem;color:var(--warning);font-weight:600;margin-top:2px}
+        .work-item-weight{font-size:0.85rem;font-weight:700;margin-top:4px}
+        .work-item-weight.good{color:var(--success)} .work-item-weight.over{color:var(--danger)} .work-item-weight.under{color:var(--warning)}
+        .item-check{font-size:1.5rem;color:var(--success)} .item-type-icon{font-size:0.85rem;margin-right:4px}
+        .work-footer{padding:10px 15px;border-top:1px solid rgba(255,255,255,0.1)}
+        .complete-btn{width:100%;padding:16px;border-radius:12px;border:none;font-family:inherit;font-size:1.1rem;font-weight:800;cursor:pointer}
+        .complete-btn.ready{background:var(--success);color:var(--bg)} .complete-btn.partial{background:var(--warning);color:var(--bg)}
+        .complete-btn:disabled{opacity:0.4;cursor:not-allowed;background:var(--surface-light);color:var(--text-dim)}
+
+        /* MODALS */
+        .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;z-index:200}
+        .modal-overlay.show{display:flex}
+        .modal-content{background:var(--surface);border-radius:16px;padding:25px;max-width:350px;width:90%;text-align:center}
+        .modal-icon{font-size:3rem;margin-bottom:10px} .modal-title{font-size:1.3rem;font-weight:700;margin-bottom:8px}
+        .modal-weight{font-size:2rem;font-weight:800;margin-bottom:4px}
+        .modal-target{font-size:0.9rem;color:var(--text-dim);margin-bottom:15px}
+        .modal-message{font-size:0.9rem;color:var(--text-dim);margin-bottom:20px;line-height:1.4}
+        .modal-buttons{display:flex;gap:10px}
+        .modal-btn{flex:1;padding:14px;border:none;border-radius:10px;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer}
+        .modal-btn.primary{background:var(--accent);color:white} .modal-btn.secondary{background:var(--surface-light);color:white}
+        .warning-under{color:var(--warning)} .warning-over{color:var(--danger)}
+        .skip-reasons{display:flex;flex-direction:column;gap:8px;margin-bottom:15px}
+        .skip-reason-btn{padding:12px;border-radius:10px;border:2px solid var(--surface-light);background:transparent;color:var(--text);font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;text-align:left}
+        .skip-reason-btn.selected{border-color:var(--accent);background:rgba(155,89,182,0.2)}
+
+        /* TOAST */
+        .toast{position:fixed;top:100px;left:50%;transform:translateX(-50%) translateY(-200px);background:var(--success);color:var(--bg);padding:15px 30px;border-radius:12px;font-weight:600;font-size:1.1rem;transition:transform 0.3s;z-index:300;white-space:nowrap;max-width:90%}
+        .toast.error{background:var(--danger);color:white} .toast.show{transform:translateX(-50%) translateY(0)}
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>⚖️ <span>Weigh Station</span></h1>
+        <div class="header-right">
+            <span class="scale-indicator" id="scaleIndicator">No Scale</span>
+            <span class="employee-badge" id="employeeBadge" style="display:none;"></span>
+            <button class="logout-btn" id="logoutBtn" style="display:none;">Logout</button>
+        </div>
+    </header>
+
+    <!-- PIN LOGIN -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-title" id="loginTitle">Enter Your PIN</div>
+        <div class="login-subtitle" id="loginSubtitle">Use your Square PIN</div>
+        <div class="pin-display" id="pinDisplay">
+            <div class="pin-dot" id="dot0"></div>
+            <div class="pin-dot" id="dot1"></div>
+            <div class="pin-dot" id="dot2"></div>
+            <div class="pin-dot" id="dot3"></div>
+        </div>
+        <div class="pin-status" id="pinStatus"></div>
+        <div class="pin-pad" id="pinPad">
+            <button class="pin-key" data-key="1">1</button>
+            <button class="pin-key" data-key="2">2</button>
+            <button class="pin-key" data-key="3">3</button>
+            <button class="pin-key" data-key="4">4</button>
+            <button class="pin-key" data-key="5">5</button>
+            <button class="pin-key" data-key="6">6</button>
+            <button class="pin-key" data-key="7">7</button>
+            <button class="pin-key" data-key="8">8</button>
+            <button class="pin-key" data-key="9">9</button>
+            <button class="pin-key backspace" data-key="back">⌫</button>
+            <button class="pin-key zero" data-key="0">0</button>
+            <button class="pin-key backspace" data-key="clear">C</button>
+        </div>
+        <button class="scale-connect-btn-login" id="loginScaleBtn">Connect Scale</button>
+    </div>
+
+    <!-- NAME INPUT (new employee registration) -->
+    <div class="name-input-screen" id="nameInputScreen">
+        <div class="login-title">Welcome! Enter Your Name</div>
+        <div class="login-subtitle">This PIN hasn't been used before</div>
+        <input type="text" class="name-input" id="nameInput" placeholder="First and Last Name" autocomplete="off">
+        <button class="name-submit-btn" id="nameSubmitBtn" disabled>REGISTER & START</button>
+    </div>
+
+    <!-- ORDER LIST -->
+    <div class="order-list-screen" id="orderListScreen">
+        <div class="order-list-header"><h2>Pending Orders</h2><span class="count-badge" id="orderCountBadge">0</span></div>
+        <div class="order-list" id="orderList"></div>
+        <div class="poll-status" id="pollStatus">Checking for orders...</div>
+    </div>
+
+    <!-- ORDER WORK -->
+    <div class="order-work-screen" id="orderWorkScreen">
+        <div class="work-header">
+            <div class="work-header-top"><span class="work-car" id="workCar"></span><button class="work-back-btn" id="workBackBtn">← Orders</button></div>
+            <div class="work-meta" id="workMeta"></div>
+            <div class="work-notes" id="workNotes"></div>
+        </div>
+        <div class="scale-bar" id="scaleBar">
+            <div class="scale-weight"><span id="currentWeight">0.0</span><span class="unit"> oz</span></div>
+            <div class="scale-feedback" id="scaleFeedback"></div>
+            <button class="scale-connect-btn" id="connectScaleBtn">Connect Scale</button>
+        </div>
+        <div class="items-scroll" id="itemsScroll"></div>
+        <div class="work-footer"><button class="complete-btn" id="completeBtn" disabled>COMPLETE ORDER</button></div>
+    </div>
+
+    <!-- WEIGHT WARNING MODAL -->
+    <div class="modal-overlay" id="weightWarningModal"><div class="modal-content">
+        <div class="modal-icon" id="warningIcon">⚠️</div>
+        <div class="modal-title" id="warningTitle">UNDER WEIGHT</div>
+        <div class="modal-weight" id="warningWeight">0.0 oz</div>
+        <div class="modal-target" id="warningTarget">Target: 0.0 oz</div>
+        <div class="modal-message" id="warningMessage"></div>
+        <div class="modal-buttons"><button class="modal-btn primary" id="reweighBtn">Add & Re-weigh</button><button class="modal-btn secondary" id="acceptWeightBtn">Accept</button></div>
+    </div></div>
+
+    <!-- SKIP WARNING MODAL -->
+    <div class="modal-overlay" id="skipWarningModal"><div class="modal-content">
+        <div class="modal-icon">⚠️</div>
+        <div class="modal-title" style="color:var(--warning);">Items Not Complete</div>
+        <div class="modal-message" id="skipMessage"></div>
+        <div class="skip-reasons" id="skipReasons">
+            <button class="skip-reason-btn" data-reason="Scale not working">Scale not working</button>
+            <button class="skip-reason-btn" data-reason="Remake">Remake / redo</button>
+            <button class="skip-reason-btn" data-reason="Other">Other</button>
+        </div>
+        <div class="modal-buttons"><button class="modal-btn secondary" id="skipCancelBtn">Go Back</button><button class="modal-btn primary" id="skipConfirmBtn" disabled>Complete Anyway</button></div>
+    </div></div>
+
+    <div class="toast" id="toast"></div>
+
+<script>
+const API_BASE='https://script.google.com/macros/s/AKfycbx1Ne-7sN_8AdhGO-RU30z1PRpX0MFYoUTP_J4uc2Ch-tQjYobrN7YUc-mhTxkY7mmZ/exec';
+const LOCATION='Garden of the Gods';
+const POLL_INTERVAL=5000;
+const TOLERANCE=0.5;
+
+let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,lastScaleInput=Date.now(),pendingWeighItem=null;
+const $=id=>document.getElementById(id);
+function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+function showToast(msg,err=false){const t=$('toast');t.textContent=msg;t.className='toast'+(err?' error':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+
+// API
+async function apiGet(action,params={}){const url=new URL(API_BASE);url.searchParams.set('action',action);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));const r=await fetch(url.toString(),{redirect:'follow'});return r.json();}
+async function apiPost(action,body){const r=await fetch(API_BASE+'?action='+action,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),redirect:'follow'});return r.json();}
+
+// ===== PIN LOGIN =====
+let pinEntry='';
+let pinMode='login'; // 'login', 'confirm', 'register'
+let pendingPin='';
+
+$('pinPad').addEventListener('click',e=>{
+    const key=e.target.dataset.key;
+    if(!key)return;
+    if(key==='back'){pinEntry=pinEntry.slice(0,-1);updatePinDots();return;}
+    if(key==='clear'){pinEntry='';updatePinDots();$('pinStatus').textContent='';return;}
+    if(pinEntry.length>=4)return;
+    pinEntry+=key;
+    updatePinDots();
+    if(pinEntry.length===4)handlePinComplete();
+});
+
+function updatePinDots(){
+    for(let i=0;i<4;i++){
+        $('dot'+i).className='pin-dot'+(i<pinEntry.length?' filled':'');
+    }
+}
+
+function showPinError(){
+    for(let i=0;i<4;i++)$('dot'+i).className='pin-dot error';
+    setTimeout(()=>{pinEntry='';updatePinDots();},600);
+}
+
+async function handlePinComplete(){
+    if(pinMode==='login'){
+        $('pinStatus').textContent='Checking...';
+        try{
+            const result=await apiGet('pinlookup',{pin:pinEntry});
+            if(result.found){
+                loginEmployee(result);
+            }else{
+                // New PIN — go to confirm mode
+                pendingPin=pinEntry;
+                pinEntry='';
+                pinMode='confirm';
+                $('loginTitle').textContent='Confirm Your PIN';
+                $('loginSubtitle').textContent='Enter the same 4 digits again';
+                $('pinStatus').textContent='';
+                updatePinDots();
+            }
+        }catch(e){
+            $('pinStatus').textContent='Connection error';
+            showPinError();
+        }
+    }else if(pinMode==='confirm'){
+        if(pinEntry===pendingPin){
+            // PIN confirmed — ask for name
+            pinMode='register';
+            $('loginScreen').style.display='none';
+            $('nameInputScreen').classList.add('active');
+            $('nameInput').focus();
+        }else{
+            $('pinStatus').textContent='PINs don\'t match — try again';
+            showPinError();
+            pinMode='login';
+            pendingPin='';
+            $('loginTitle').textContent='Enter Your PIN';
+            $('loginSubtitle').textContent='Use your Square PIN';
+        }
+    }
+}
+
+// NAME REGISTRATION
+$('nameInput').addEventListener('input',()=>{
+    $('nameSubmitBtn').disabled=$('nameInput').value.trim().length<2;
+});
+$('nameInput').addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&!$('nameSubmitBtn').disabled)registerEmployee();
+});
+$('nameSubmitBtn').addEventListener('click',registerEmployee);
+
+async function registerEmployee(){
+    const name=$('nameInput').value.trim();
+    if(name.length<2)return;
+    $('nameSubmitBtn').disabled=true;
+    $('nameSubmitBtn').textContent='Registering...';
+    try{
+        const result=await apiPost('pinregister',{pin:pendingPin,name:name});
+        if(result.success){
+            loginEmployee({name:result.name,employee_id:result.employee_id});
+        }else{
+            showToast(result.error||'Registration failed',true);
+            // Go back to PIN screen
+            resetLogin();
+        }
+    }catch(e){
+        showToast('Connection error',true);
+        resetLogin();
+    }
+}
+
+function loginEmployee(emp){
+    currentEmployee={id:emp.employee_id,name:emp.name};
+    $('loginScreen').style.display='none';
+    $('nameInputScreen').classList.remove('active');
+    $('orderListScreen').classList.add('active');
+    $('employeeBadge').textContent=currentEmployee.name;
+    $('employeeBadge').style.display='inline-block';
+    $('logoutBtn').style.display='inline-block';
+    $('pinStatus').textContent='';
+    showToast('Welcome, '+currentEmployee.name+'!');
+    startPolling();
+}
+
+function resetLogin(){
+    pinEntry='';pinMode='login';pendingPin='';
+    $('loginTitle').textContent='Enter Your PIN';
+    $('loginSubtitle').textContent='Use your Square PIN';
+    $('pinStatus').textContent='';
+    $('nameInputScreen').classList.remove('active');
+    $('loginScreen').style.display='flex';
+    $('nameInput').value='';
+    $('nameSubmitBtn').disabled=true;
+    $('nameSubmitBtn').textContent='REGISTER & START';
+    updatePinDots();
+}
+
+$('logoutBtn').addEventListener('click',()=>{
+    stopPolling();currentEmployee=null;activeOrder=null;workItems=[];
+    $('orderListScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');
+    $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';
+    resetLogin();
+});
+
+// ===== SCALE =====
+$('loginScaleBtn').addEventListener('click',connectScale);
+$('connectScaleBtn').addEventListener('click',connectScale);
+
+async function connectScale(){
+    try{
+        const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
+        if(!devs.length){showToast('No scale selected',true);return;}
+        await openScale(devs[0]);
+    }catch(e){showToast('Scale error: '+e.message,true);console.error('Scale connect error:',e);}
+}
+async function openScale(device){
+    try{
+        scaleDevice=device;
+        if(scaleDevice.opened){try{await scaleDevice.close();}catch(e){}}
+        await new Promise(r=>setTimeout(r,500));
+        await scaleDevice.open();
+        scaleDevice.addEventListener('inputreport',handleScaleInput);
+        scaleDevice.addEventListener('close',onScaleDisconnect);
+        updateScaleUI(true);showToast('Scale connected!');
+    }catch(e){
+        console.error('Scale open error:',e);
+        showToast('Scale open failed - retrying...',true);
+        await new Promise(r=>setTimeout(r,2000));
+        try{
+            if(!scaleDevice.opened)await scaleDevice.open();
+            scaleDevice.addEventListener('inputreport',handleScaleInput);
+            scaleDevice.addEventListener('close',onScaleDisconnect);
+            updateScaleUI(true);showToast('Scale connected on retry!');
+        }catch(e2){showToast('Scale failed: '+e2.message,true);updateScaleUI(false);}
+    }
+}
+function onScaleDisconnect(){
+    updateScaleUI(false);showToast('Scale disconnected - reconnecting...',true);
+    setTimeout(async()=>{
+        try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);
+        if(s)await openScale(s);else showToast('Replug scale USB cable',true);}catch(e){showToast('Reconnect failed',true);}
+    },3000);
+}
+async function autoConnectScale(){
+    if(!navigator.hid)return;
+    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);
+    if(s)await openScale(s);}catch(e){console.log('Auto-connect failed:',e.message);}
+}
+if(navigator.hid){
+    navigator.hid.addEventListener('connect',async(e)=>{if(e.device.vendorId===0x0922||e.device.vendorId===0x1446){await new Promise(r=>setTimeout(r,1000));await openScale(e.device);}});
+    navigator.hid.addEventListener('disconnect',(e)=>{if(scaleDevice&&e.device===scaleDevice){onScaleDisconnect();}});
+}
+function handleScaleInput(event){
+    const b=new Uint8Array(event.data.buffer);
+    if(b.length>=5){const uc=b[1],exp=b[2]>127?b[2]-256:b[2],wr=b[3]+(b[4]<<8);let w=wr*Math.pow(10,exp);if(uc===2)w*=0.035274;currentWeight=w;$('currentWeight').textContent=w.toFixed(1);}
+}
+function updateScaleUI(connected){
+    const i=$('scaleIndicator');
+    if(connected){i.textContent='⚖️ Scale OK';i.classList.add('connected');$('connectScaleBtn').style.display='none';$('loginScaleBtn').textContent='✓ Scale Connected';$('loginScaleBtn').disabled=true;}
+    else{i.textContent='No Scale';i.classList.remove('connected');$('connectScaleBtn').style.display='block';}
+}
+
+// ===== POLLING =====
+function startPolling(){fetchOrders();pollTimer=setInterval(fetchOrders,POLL_INTERVAL);}
+function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+async function fetchOrders(){
+    try{orders=await apiGet('getpendingorders',{location:LOCATION});if(!activeOrder)renderOrderList();$('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();}
+    catch(e){$('pollStatus').textContent='Connection error - retrying...';}
+}
+
+// ===== ORDER LIST =====
+function renderOrderList(){
+    const list=$('orderList');
+    const unclaimed=orders.filter(o=>!o.claimed_by);
+    const mine=orders.filter(o=>o.claimed_by&&currentEmployee&&o.claimed_by===currentEmployee.name);
+    const others=orders.filter(o=>o.claimed_by&&(!currentEmployee||o.claimed_by!==currentEmployee.name));
+    $('orderCountBadge').textContent=unclaimed.length+mine.length;
+    if(!orders.length){list.innerHTML='<div class="no-orders"><div class="icon">📋</div><div class="msg">No pending orders</div></div>';return;}
+    let h='';
+    mine.forEach(o=>{
+        const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
+        h+='<div class="order-card mine" data-order-id="'+o.order_id+'">';
+        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
+        h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
+        h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
+        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">▶ Resume your order</div>';
+        if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
+        h+='</div>';
+    });
+    unclaimed.forEach(o=>{
+        const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
+        h+='<div class="order-card" data-order-id="'+o.order_id+'">';
+        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
+        h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
+        h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
+        if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
+        h+='</div>';
+    });
+    others.forEach(o=>{
+        h+='<div class="order-card claimed"><div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
+        h+='<div class="order-card-id">'+o.order_id+'</div><div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+'</div></div>';
+    });
+    list.innerHTML=h;
+    list.querySelectorAll('.order-card:not(.claimed)').forEach(c=>{c.addEventListener('click',()=>{
+        const oid=c.dataset.orderId;const o=orders.find(x=>x.order_id===oid);
+        if(o&&o.claimed_by===currentEmployee.name){resumeOrder(o);}else{claimOrder(oid);}
+    });});
+}
+function orderAge(ts){const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
+
+// ===== CLAIM =====
+async function claimOrder(id){
+    const o=orders.find(x=>x.order_id===id);if(!o)return;
+    try{const r=await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
+    if(r.success){activeOrder=o;activeOrder.claimed_by=currentEmployee.name;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));showWorkScreen();}
+    else{showToast(r.error||'Could not claim',true);fetchOrders();}}catch(e){showToast('Error claiming order',true);}
+}
+function resumeOrder(o){
+    activeOrder=o;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));showWorkScreen();
+}
+
+// ===== WORK SCREEN =====
+function showWorkScreen(){
+    $('orderListScreen').classList.remove('active');$('orderWorkScreen').classList.add('active');
+    $('workCar').textContent=activeOrder.car_name||'No Car';
+    $('workMeta').textContent=activeOrder.order_id+(activeOrder.payment_type?' • '+activeOrder.payment_type:'');
+    $('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';$('workNotes').style.display=activeOrder.notes?'block':'none';
+    renderWorkItems();
+}
+function renderWorkItems(){
+    const wi=workItems.filter(i=>i.needsWeigh),pi=workItems.filter(i=>!i.needsWeigh);let h='';
+    if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true);});}
+    if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false);});}
+    $('itemsScroll').innerHTML=h;
+    $('itemsScroll').querySelectorAll('.work-item').forEach(el=>{el.addEventListener('click',()=>handleItemTap(parseInt(el.dataset.idx)));});
+    updateCompleteBtn();
+}
+function renderWorkItem(item,isWeigh){
+    const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';
+    let wt='';
+    if(item.done&&item.weightOz!==null){const d=item.weightOz-item.targetOz;let wc='good';if(Math.abs(d)>TOLERANCE)wc=d>0?'over':'under';wt='<div class="work-item-weight '+wc+'">✓ '+item.weightOz.toFixed(1)+' oz</div>';}
+    else if(item.done&&item.skipped){wt='<div class="work-item-weight under">⚠ Not weighed'+(item.skipReason?' - '+item.skipReason:'')+'</div>';}
+    else if(item.done){wt='<div class="work-item-weight good">✓ Done</div>';}
+    let h='<div class="work-item '+tc+dc+'" data-idx="'+item.idx+'"><div class="work-item-top">';
+    h+='<span class="work-item-name"><span class="item-type-icon">'+ic+'</span> '+esc(item.name)+'</span>';
+    if(isWeigh&&item.targetOz)h+='<span class="work-item-target">'+item.targetOz+' oz</span>';
+    if(item.done)h+='<span class="item-check">✓</span>';
+    h+='</div>';
+    if(item.flavors)h+='<div class="work-item-flavors">'+esc(item.flavors)+'</div>';
+    if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
+    h+=wt+'</div>';return h;
+}
+
+// ===== ITEM TAP =====
+function handleItemTap(idx){
+    const item=workItems[idx];if(!item)return;
+    if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;renderWorkItems();return;}
+    if(item.needsWeigh){
+        if(!scaleDevice||!scaleDevice.opened){showToast('Connect scale first',true);return;}
+        if(currentWeight<=0){showToast('Place item on scale first',true);return;}
+        if(currentWeight<item.targetOz*0.5){showToast('Wait for scale to settle',true);return;}
+        const diff=currentWeight-item.targetOz;
+        if(diff<-TOLERANCE)showWeightWarning(item,currentWeight,'under');
+        else if(diff>TOLERANCE)showWeightWarning(item,currentWeight,'over');
+        else{item.done=true;item.weightOz=currentWeight;weighFeedback(item,currentWeight);renderWorkItems();}
+    }else{item.done=true;renderWorkItems();showToast('✓ '+item.name);}
+}
+
+// ===== WEIGHT WARNINGS =====
+function showWeightWarning(item,weight,type){
+    pendingWeighItem={item,weight};
+    $('warningWeight').textContent=weight.toFixed(1)+' oz';$('warningTarget').textContent='Target: '+item.targetOz+' oz';
+    if(type==='under'){$('warningIcon').textContent='⚠️';$('warningTitle').textContent='UNDER WEIGHT';$('warningTitle').className='modal-title warning-under';$('warningWeight').className='modal-weight warning-under';$('warningMessage').textContent='Add more ice cream and re-weigh.';$('reweighBtn').textContent='Add & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept Anyway';}
+    else{$('warningIcon').textContent='🔴';$('warningTitle').textContent='OVER WEIGHT';$('warningTitle').className='modal-title warning-over';$('warningWeight').className='modal-weight warning-over';$('warningMessage').textContent='Over target. Do NOT remove ice cream. Accept and serve as-is.';$('reweighBtn').style.display='none';$('acceptWeightBtn').textContent='Accept & Continue';}
+    $('weightWarningModal').classList.add('show');
+}
+$('reweighBtn').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;showToast('Add ice cream and tap again');});
+$('acceptWeightBtn').addEventListener('click',()=>{
+    if(pendingWeighItem){const i=pendingWeighItem.item;i.done=true;i.weightOz=pendingWeighItem.weight;weighFeedback(i,pendingWeighItem.weight);renderWorkItems();}
+    $('weightWarningModal').classList.remove('show');pendingWeighItem=null;
+});
+function weighFeedback(item,w){
+    const d=Math.abs(w-item.targetOz);let e,m;
+    if(d<=0.2){e='🎯';m='PERFECT!';}else if(d<=TOLERANCE){e='👍';m='Good!';}else if(w<item.targetOz){e='⚠️';m='Under';}else{e='😬';m='Over';}
+    $('scaleFeedback').textContent=e+' '+m;showToast(e+' '+item.name+': '+w.toFixed(1)+' oz - '+m,d>TOLERANCE);
+}
+
+// ===== COMPLETE =====
+function updateCompleteBtn(){
+    const btn=$('completeBtn'),total=workItems.length,done=workItems.filter(i=>i.done).length,rem=total-done;
+    if(!total){btn.disabled=true;btn.textContent='NO ITEMS';return;}
+    btn.disabled=false;
+    if(!rem){btn.className='complete-btn ready';btn.textContent='✓ COMPLETE ORDER';}
+    else{btn.className='complete-btn partial';btn.textContent='⚠ COMPLETE ('+rem+' not done)';}
+}
+$('completeBtn').addEventListener('click',()=>{
+    const rem=workItems.filter(i=>!i.done);if(rem.length)showSkipWarning(rem);else completeOrder();
+});
+
+// SKIP
+let selectedSkipReason=null;
+function showSkipWarning(rem){
+    const wr=rem.filter(i=>i.needsWeigh),pr=rem.filter(i=>!i.needsWeigh);
+    let m='';if(wr.length)m+=wr.length+' item(s) not weighed. ';if(pr.length)m+=pr.length+' item(s) not prepped. ';
+    $('skipMessage').textContent=m;selectedSkipReason=null;$('skipConfirmBtn').disabled=true;
+    $('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));
+    $('skipWarningModal').classList.add('show');
+}
+$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{selectedSkipReason=btn.dataset.reason;$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');$('skipConfirmBtn').disabled=false;});
+});
+$('skipCancelBtn').addEventListener('click',()=>{$('skipWarningModal').classList.remove('show');});
+$('skipConfirmBtn').addEventListener('click',()=>{
+    workItems.forEach(i=>{if(!i.done){i.done=true;i.skipped=true;i.skipReason=selectedSkipReason;}});
+    $('skipWarningModal').classList.remove('show');completeOrder();
+});
+
+// SEND
+async function completeOrder(){
+    const btn=$('completeBtn');btn.disabled=true;btn.textContent='Saving...';
+    const payload={order_id:activeOrder.order_id,location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name,
+        items:workItems.map(i=>({item_name:i.name,sku:i.sku,flavors:i.flavors||'',needs_weigh:i.needsWeigh,target_oz:i.targetOz,weight_oz:i.weightOz,skipped:i.skipped||false,skip_reason:i.skipReason||null}))};
+    try{const r=await apiPost('completeorder',payload);
+        if(r.success){showToast('✓ Order complete!');activeOrder=null;workItems=[];$('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');fetchOrders();}
+        else{showToast('Error: '+(r.error||'Unknown'),true);btn.disabled=false;btn.textContent='✓ COMPLETE ORDER';}}
+    catch(e){showToast('Error completing order',true);btn.disabled=false;btn.textContent='✓ COMPLETE ORDER';}
+}
+
+// BACK
+$('workBackBtn').addEventListener('click',()=>{
+    const dc=workItems.filter(i=>i.done).length;
+    if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing?'))return;
+    activeOrder=null;workItems=[];$('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');renderOrderList();
+});
+
+// INIT
+if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
+</script>
+</body>
+</html>
