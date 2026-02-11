@@ -461,6 +461,9 @@ function renderOrderList(){
         h+='<div class="order-card-id">'+o.order_id+'</div><div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+'</div></div>';
     });
     const completed=orders.filter(o=>o.completed_at);
+    if(completed.length){
+        h+='<div style="font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--success);padding:14px 4px 6px;border-top:1px solid rgba(255,255,255,0.1);margin-top:6px;">✓ Completed Orders</div>';
+    }
     completed.forEach(o=>{
         h+='<div class="order-card completed" data-order-id="'+o.order_id+'" data-completed="true">';
         h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
