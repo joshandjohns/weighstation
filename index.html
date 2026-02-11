@@ -57,7 +57,8 @@
         .order-card{background:var(--surface);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all 0.15s;border:2px solid transparent}
         .order-card:active{transform:scale(0.98)} .order-card.claimed{border-color:var(--warning);opacity:0.6}
         .order-card.mine{border-color:var(--success)}
-        .order-card.completed{border-color:var(--success);opacity:0.7;background:rgba(74,222,128,0.08)}
+        .order-card.completed{border-color:var(--success);opacity:0.7;background:rgba(74,222,128,0.08);transition:transform 0.2s,opacity 0.2s}
+        .order-card.swiping-away{transform:translateX(-120%);opacity:0}
         .order-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
         .order-card-car{font-weight:800;font-size:1.1rem} .order-card-id{font-size:0.8rem;color:var(--text-dim)}
         .order-card-time{font-size:0.8rem;color:var(--text-dim)}
@@ -460,7 +461,7 @@ function renderOrderList(){
         h+='<div class="order-card claimed"><div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+'</div><div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+'</div></div>';
     });
-    const completed=orders.filter(o=>o.completed_at);
+    const completed=orders.filter(o=>o.completed_at&&dismissedOrderIds.indexOf(o.order_id)===-1);
     if(completed.length){
         h+='<div style="font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--success);padding:14px 4px 6px;border-top:1px solid rgba(255,255,255,0.1);margin-top:6px;">✓ Completed Orders</div>';
     }
@@ -468,7 +469,7 @@ function renderOrderList(){
         h+='<div class="order-card completed" data-order-id="'+o.order_id+'" data-completed="true">';
         h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+'</div>';
-        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed — tap to reopen</div>';
+        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed — tap to reopen · swipe to dismiss</div>';
         h+='</div>';
     });
     list.innerHTML=h;
@@ -478,10 +479,34 @@ function renderOrderList(){
         const o=orders.find(x=>x.order_id===oid);
         if(o&&o.claimed_by===currentEmployee.name){resumeOrder(o);}else{claimOrder(oid);}
     });});
+    list.querySelectorAll('.order-card.completed').forEach(c=>setupSwipeDismiss(c));
 }
 function orderAge(ts){const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
 
 // ===== REOPEN =====
+let dismissedOrderIds=[];
+
+function setupSwipeDismiss(card){
+    let startX=0,currentX=0,swiping=false;
+    card.addEventListener('touchstart',e=>{startX=e.touches[0].clientX;currentX=startX;swiping=true;});
+    card.addEventListener('touchmove',e=>{
+        if(!swiping)return;
+        currentX=e.touches[0].clientX;
+        const dx=currentX-startX;
+        if(dx<0){card.style.transform='translateX('+dx+'px)';card.style.opacity=Math.max(0,1+dx/200);e.preventDefault();}
+    },{passive:false});
+    card.addEventListener('touchend',()=>{
+        if(!swiping)return;swiping=false;
+        const dx=currentX-startX;
+        if(dx<-80){
+            card.classList.add('swiping-away');
+            const oid=card.dataset.orderId;
+            dismissedOrderIds.push(oid);
+            setTimeout(()=>renderOrderList(),300);
+        }else{card.style.transform='';card.style.opacity='';}
+    });
+}
+
 async function reopenOrder(id){
     if(!confirm('Reopen this order for changes?'))return;
     try{const r=await apiGet('reopenorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
