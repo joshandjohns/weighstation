@@ -16,8 +16,11 @@
         .header{background:var(--surface);padding:8px 15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0}
         .header h1{display:flex;align-items:center;gap:8px;font-size:1rem} .header h1 span{color:var(--accent)}
         .employee-badge{background:var(--success);color:var(--bg);padding:6px 14px;border-radius:20px;font-size:0.85rem;font-weight:700}
-        .scale-indicator{padding:6px 12px;border-radius:20px;font-size:0.75rem;font-weight:700;background:rgba(255,255,255,0.1);color:var(--text-dim)}
+        .scale-indicator{padding:6px 12px;border-radius:20px;font-size:0.75rem;font-weight:700;background:rgba(255,255,255,0.1);color:var(--text-dim);cursor:pointer}
         .scale-indicator.connected{background:rgba(74,222,128,0.2);color:var(--success)}
+        .scale-indicator.stale{background:rgba(245,158,11,0.3);color:var(--warning);animation:staleFlash 1.5s infinite}
+        .scale-indicator.dead{background:rgba(239,68,68,0.3);color:var(--danger);animation:staleFlash 1s infinite}
+        @keyframes staleFlash{0%,100%{opacity:1}50%{opacity:0.6}}
         .header-right{display:flex;align-items:center;gap:8px}
         .logout-btn{background:var(--surface-light);color:var(--text);border:none;padding:6px 14px;border-radius:20px;font-size:0.8rem;font-weight:600;cursor:pointer}
 
@@ -88,6 +91,7 @@
         .scale-weight .unit{font-size:0.9rem;color:var(--text-dim);font-weight:600}
         .scale-feedback{flex:1;text-align:center;font-weight:700;font-size:1rem}
         .scale-connect-btn{background:var(--accent);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer}
+        .scale-reconnect-btn{background:var(--danger);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer;animation:staleFlash 1.5s infinite}
         .items-scroll{flex:1;overflow-y:auto;padding:10px}
         .section-label{font-size:0.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 6px;display:flex;align-items:center;gap:8px}
         .section-label.weigh{color:var(--weigh-color)} .section-label.prep{color:var(--prep-color)}
@@ -133,7 +137,7 @@
     <header class="header">
         <h1>⚖️ <span>Weigh Station</span></h1>
         <div class="header-right">
-            <span class="scale-indicator" id="scaleIndicator">No Scale</span>
+            <span class="scale-indicator" id="scaleIndicator" title="Tap to reconnect scale">No Scale</span>
             <span class="employee-badge" id="employeeBadge" style="display:none;"></span>
             <button class="logout-btn" id="logoutBtn" style="display:none;">Logout</button>
         </div>
@@ -193,6 +197,7 @@
             <div class="scale-weight"><span id="currentWeight">0.0</span><span class="unit"> oz</span></div>
             <div class="scale-feedback" id="scaleFeedback"></div>
             <button class="scale-connect-btn" id="connectScaleBtn">Connect Scale</button>
+            <button class="scale-reconnect-btn" id="reconnectScaleBtn" style="display:none;">⚠ Reconnect Scale</button>
         </div>
         <div class="items-scroll" id="itemsScroll"></div>
         <div class="work-footer"><button class="complete-btn" id="completeBtn" disabled>COMPLETE ORDER</button></div>
@@ -229,7 +234,20 @@ const LOCATION='Garden of the Gods';
 const POLL_INTERVAL=5000;
 const TOLERANCE=0.5;
 
-let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,lastScaleInput=Date.now(),pendingWeighItem=null;
+// Scale watchdog constants
+const SCALE_VERIFY_TIMEOUT=3000;    // 3s to verify data after open
+const SCALE_DATA_TIMEOUT=10000;     // 10s of no data = stale during use
+const SCALE_WATCHDOG_INTERVAL=2000; // Check every 2s
+
+let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null;
+
+// Scale state tracking
+let scaleState='disconnected'; // 'disconnected' | 'connecting' | 'verifying' | 'live' | 'stale'
+let lastDataReceived=0;
+let scaleWatchdogTimer=null;
+let scaleVerifyTimer=null;
+let scaleReconnecting=false;
+
 const $=id=>document.getElementById(id);
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 function showToast(msg,err=false){const t=$('toast');t.textContent=msg;t.className='toast'+(err?' error':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
@@ -238,9 +256,292 @@ function showToast(msg,err=false){const t=$('toast');t.textContent=msg;t.classNa
 async function apiGet(action,params={}){const url=new URL(API_BASE);url.searchParams.set('action',action);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));const r=await fetch(url.toString(),{redirect:'follow'});return r.json();}
 async function apiPost(action,body){const r=await fetch(API_BASE+'?action='+action,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),redirect:'follow'});return r.json();}
 
+// ===== SCALE STATE MACHINE =====
+function setScaleState(newState) {
+    scaleState = newState;
+    const ind = $('scaleIndicator');
+    const connectBtn = $('connectScaleBtn');
+    const reconnectBtn = $('reconnectScaleBtn');
+    const loginBtn = $('loginScaleBtn');
+
+    switch(newState) {
+        case 'disconnected':
+            ind.textContent = 'No Scale';
+            ind.className = 'scale-indicator';
+            connectBtn.style.display = 'block';
+            connectBtn.textContent = 'Connect Scale';
+            reconnectBtn.style.display = 'none';
+            loginBtn.textContent = 'Connect Scale';
+            loginBtn.disabled = false;
+            break;
+        case 'connecting':
+            ind.textContent = '⏳ Connecting...';
+            ind.className = 'scale-indicator';
+            connectBtn.style.display = 'none';
+            reconnectBtn.style.display = 'none';
+            loginBtn.textContent = 'Connecting...';
+            loginBtn.disabled = true;
+            break;
+        case 'verifying':
+            ind.textContent = '⏳ Verifying...';
+            ind.className = 'scale-indicator stale';
+            connectBtn.style.display = 'none';
+            reconnectBtn.style.display = 'none';
+            break;
+        case 'live':
+            ind.textContent = '⚖️ Scale OK';
+            ind.className = 'scale-indicator connected';
+            connectBtn.style.display = 'none';
+            reconnectBtn.style.display = 'none';
+            loginBtn.textContent = '✓ Scale Connected';
+            loginBtn.disabled = true;
+            break;
+        case 'stale':
+            ind.textContent = '⚠ Scale Lost — Tap Here';
+            ind.className = 'scale-indicator dead';
+            connectBtn.style.display = 'none';
+            reconnectBtn.style.display = 'block';
+            loginBtn.textContent = '⚠ Reconnect Scale';
+            loginBtn.disabled = false;
+            break;
+    }
+}
+
+// Tapping the header indicator triggers reconnect
+$('scaleIndicator').addEventListener('click', () => {
+    if (scaleState === 'stale' || scaleState === 'disconnected') {
+        forceReconnectScale();
+    }
+});
+
+// ===== SCALE WATCHDOG =====
+function startScaleWatchdog() {
+    stopScaleWatchdog();
+    scaleWatchdogTimer = setInterval(() => {
+        if (scaleState === 'live') {
+            const elapsed = Date.now() - lastDataReceived;
+            if (elapsed > SCALE_DATA_TIMEOUT) {
+                console.log('Watchdog: no data for ' + Math.round(elapsed/1000) + 's, marking stale');
+                setScaleState('stale');
+                showToast('Scale lost — tap Reconnect', true);
+            }
+        }
+    }, SCALE_WATCHDOG_INTERVAL);
+}
+
+function stopScaleWatchdog() {
+    if (scaleWatchdogTimer) { clearInterval(scaleWatchdogTimer); scaleWatchdogTimer = null; }
+    if (scaleVerifyTimer) { clearTimeout(scaleVerifyTimer); scaleVerifyTimer = null; }
+}
+
+// ===== SCALE CONNECTION =====
+$('loginScaleBtn').addEventListener('click', () => {
+    if (scaleState === 'stale') forceReconnectScale();
+    else connectScale();
+});
+$('connectScaleBtn').addEventListener('click', connectScale);
+$('reconnectScaleBtn').addEventListener('click', forceReconnectScale);
+
+// Fresh connect — shows Chrome picker
+async function connectScale() {
+    try {
+        setScaleState('connecting');
+        const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x0922 }, { vendorId: 0x1446 }] });
+        if (!devs.length) { showToast('No scale selected', true); setScaleState('disconnected'); return; }
+        await openScale(devs[0]);
+    } catch(e) {
+        showToast('Scale error: ' + e.message, true);
+        console.error('Scale connect error:', e);
+        setScaleState('disconnected');
+    }
+}
+
+// Force reconnect — close stale device, try auto first, then picker
+async function forceReconnectScale() {
+    if (scaleReconnecting) return;
+    scaleReconnecting = true;
+    console.log('Force reconnect: cleaning up old connection');
+
+    // Close any existing stale device
+    if (scaleDevice) {
+        try {
+            scaleDevice.removeEventListener('inputreport', handleScaleInput);
+            scaleDevice.removeEventListener('close', onScaleDisconnect);
+            if (scaleDevice.opened) await scaleDevice.close();
+        } catch(e) { console.log('Cleanup error (ok):', e.message); }
+        scaleDevice = null;
+    }
+
+    setScaleState('connecting');
+    currentWeight = 0;
+    $('currentWeight').textContent = '0.0';
+
+    // Brief pause after closing
+    await new Promise(r => setTimeout(r, 500));
+
+    // Try auto-reconnect first (faster for user)
+    try {
+        const devs = await navigator.hid.getDevices();
+        const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
+        if (s) {
+            console.log('Force reconnect: found paired device, trying auto');
+            await openScale(s);
+            scaleReconnecting = false;
+            return;
+        }
+    } catch(e) { console.log('Auto path failed:', e.message); }
+
+    // Auto failed — need fresh picker
+    try {
+        console.log('Force reconnect: opening Chrome picker');
+        const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x0922 }, { vendorId: 0x1446 }] });
+        if (!devs.length) { showToast('No scale selected', true); setScaleState('disconnected'); scaleReconnecting = false; return; }
+        await openScale(devs[0]);
+    } catch(e) {
+        showToast('Reconnect failed: ' + e.message, true);
+        setScaleState('disconnected');
+    }
+    scaleReconnecting = false;
+}
+
+async function openScale(device) {
+    try {
+        scaleDevice = device;
+
+        // Clean close if already open (stale handle)
+        if (scaleDevice.opened) {
+            try { await scaleDevice.close(); } catch(e) {}
+            await new Promise(r => setTimeout(r, 500));
+        }
+
+        await scaleDevice.open();
+
+        // Remove any old listeners before adding new ones
+        try { scaleDevice.removeEventListener('inputreport', handleScaleInput); } catch(e) {}
+        try { scaleDevice.removeEventListener('close', onScaleDisconnect); } catch(e) {}
+
+        scaleDevice.addEventListener('inputreport', handleScaleInput);
+        scaleDevice.addEventListener('close', onScaleDisconnect);
+
+        // Don't trust open() — enter verify state and wait for actual data
+        setScaleState('verifying');
+        console.log('Scale opened, verifying data flow...');
+
+        // Start verification timer
+        if (scaleVerifyTimer) clearTimeout(scaleVerifyTimer);
+        scaleVerifyTimer = setTimeout(() => {
+            if (scaleState === 'verifying') {
+                // No data arrived within timeout — connection is stale
+                console.log('Verify failed: no data received in ' + SCALE_VERIFY_TIMEOUT + 'ms');
+                setScaleState('stale');
+                showToast('Scale not responding — tap Reconnect', true);
+            }
+        }, SCALE_VERIFY_TIMEOUT);
+
+        startScaleWatchdog();
+
+    } catch(e) {
+        console.error('Scale open error:', e);
+        showToast('Scale open failed: ' + e.message, true);
+
+        // Retry once after delay
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+            if (!scaleDevice.opened) await scaleDevice.open();
+            try { scaleDevice.removeEventListener('inputreport', handleScaleInput); } catch(e2) {}
+            try { scaleDevice.removeEventListener('close', onScaleDisconnect); } catch(e2) {}
+            scaleDevice.addEventListener('inputreport', handleScaleInput);
+            scaleDevice.addEventListener('close', onScaleDisconnect);
+            setScaleState('verifying');
+            if (scaleVerifyTimer) clearTimeout(scaleVerifyTimer);
+            scaleVerifyTimer = setTimeout(() => {
+                if (scaleState === 'verifying') { setScaleState('stale'); showToast('Scale not responding — tap Reconnect', true); }
+            }, SCALE_VERIFY_TIMEOUT);
+            startScaleWatchdog();
+        } catch(e2) {
+            showToast('Scale failed: ' + e2.message, true);
+            setScaleState('disconnected');
+        }
+    }
+}
+
+function onScaleDisconnect() {
+    console.log('Scale disconnect event fired');
+    setScaleState('stale');
+    showToast('Scale disconnected — tap Reconnect', true);
+
+    // Auto-retry after 3s
+    setTimeout(async () => {
+        if (scaleState !== 'stale') return; // Already reconnected
+        try {
+            const devs = await navigator.hid.getDevices();
+            const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
+            if (s) {
+                console.log('Auto-reconnect: found device');
+                await openScale(s);
+            }
+        } catch(e) { console.log('Auto-reconnect failed:', e.message); }
+    }, 3000);
+}
+
+function handleScaleInput(event) {
+    const b = new Uint8Array(event.data.buffer);
+    lastDataReceived = Date.now();
+
+    // If we were verifying, we now know data is flowing
+    if (scaleState === 'verifying') {
+        console.log('Scale verified — data flowing');
+        if (scaleVerifyTimer) { clearTimeout(scaleVerifyTimer); scaleVerifyTimer = null; }
+        setScaleState('live');
+        showToast('Scale connected!');
+    }
+
+    // If we were stale, data resumed
+    if (scaleState === 'stale') {
+        console.log('Scale data resumed');
+        setScaleState('live');
+        showToast('Scale reconnected!');
+    }
+
+    if (b.length >= 5) {
+        const uc = b[1], exp = b[2] > 127 ? b[2] - 256 : b[2], wr = b[3] + (b[4] << 8);
+        let w = wr * Math.pow(10, exp);
+        if (uc === 2) w *= 0.035274;
+        currentWeight = w;
+        $('currentWeight').textContent = w.toFixed(1);
+    }
+}
+
+// Auto-connect on page load
+async function autoConnectScale() {
+    if (!navigator.hid) return;
+    try {
+        const devs = await navigator.hid.getDevices();
+        const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
+        if (s) await openScale(s);
+    } catch(e) { console.log('Auto-connect failed:', e.message); }
+}
+
+// Listen for USB plug/unplug events
+if (navigator.hid) {
+    navigator.hid.addEventListener('connect', async (e) => {
+        if (e.device.vendorId === 0x0922 || e.device.vendorId === 0x1446) {
+            console.log('HID connect event: scale plugged in');
+            await new Promise(r => setTimeout(r, 1000));
+            await openScale(e.device);
+        }
+    });
+    navigator.hid.addEventListener('disconnect', (e) => {
+        if (scaleDevice && e.device === scaleDevice) {
+            console.log('HID disconnect event: scale unplugged');
+            onScaleDisconnect();
+        }
+    });
+}
+
 // ===== PIN LOGIN =====
 let pinEntry='';
-let pinMode='login'; // 'login', 'confirm', 'register'
+let pinMode='login';
 let pendingPin='';
 
 $('pinPad').addEventListener('click',e=>{
@@ -273,7 +574,6 @@ async function handlePinComplete(){
             if(result.found){
                 loginEmployee(result);
             }else{
-                // New PIN — go to confirm mode
                 pendingPin=pinEntry;
                 pinEntry='';
                 pinMode='confirm';
@@ -288,7 +588,6 @@ async function handlePinComplete(){
         }
     }else if(pinMode==='confirm'){
         if(pinEntry===pendingPin){
-            // PIN confirmed — ask for name
             pinMode='register';
             $('loginScreen').style.display='none';
             $('nameInputScreen').classList.add('active');
@@ -324,7 +623,6 @@ async function registerEmployee(){
             loginEmployee({name:result.name,employee_id:result.employee_id});
         }else{
             showToast(result.error||'Registration failed',true);
-            // Go back to PIN screen
             resetLogin();
         }
     }catch(e){
@@ -365,64 +663,6 @@ $('logoutBtn').addEventListener('click',()=>{
     $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';
     resetLogin();
 });
-
-// ===== SCALE =====
-$('loginScaleBtn').addEventListener('click',connectScale);
-$('connectScaleBtn').addEventListener('click',connectScale);
-
-async function connectScale(){
-    try{
-        const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
-        if(!devs.length){showToast('No scale selected',true);return;}
-        await openScale(devs[0]);
-    }catch(e){showToast('Scale error: '+e.message,true);console.error('Scale connect error:',e);}
-}
-async function openScale(device){
-    try{
-        scaleDevice=device;
-        if(scaleDevice.opened){try{await scaleDevice.close();}catch(e){}}
-        await new Promise(r=>setTimeout(r,500));
-        await scaleDevice.open();
-        scaleDevice.addEventListener('inputreport',handleScaleInput);
-        scaleDevice.addEventListener('close',onScaleDisconnect);
-        updateScaleUI(true);showToast('Scale connected!');
-    }catch(e){
-        console.error('Scale open error:',e);
-        showToast('Scale open failed - retrying...',true);
-        await new Promise(r=>setTimeout(r,2000));
-        try{
-            if(!scaleDevice.opened)await scaleDevice.open();
-            scaleDevice.addEventListener('inputreport',handleScaleInput);
-            scaleDevice.addEventListener('close',onScaleDisconnect);
-            updateScaleUI(true);showToast('Scale connected on retry!');
-        }catch(e2){showToast('Scale failed: '+e2.message,true);updateScaleUI(false);}
-    }
-}
-function onScaleDisconnect(){
-    updateScaleUI(false);showToast('Scale disconnected - reconnecting...',true);
-    setTimeout(async()=>{
-        try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);
-        if(s)await openScale(s);else showToast('Replug scale USB cable',true);}catch(e){showToast('Reconnect failed',true);}
-    },3000);
-}
-async function autoConnectScale(){
-    if(!navigator.hid)return;
-    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);
-    if(s)await openScale(s);}catch(e){console.log('Auto-connect failed:',e.message);}
-}
-if(navigator.hid){
-    navigator.hid.addEventListener('connect',async(e)=>{if(e.device.vendorId===0x0922||e.device.vendorId===0x1446){await new Promise(r=>setTimeout(r,1000));await openScale(e.device);}});
-    navigator.hid.addEventListener('disconnect',(e)=>{if(scaleDevice&&e.device===scaleDevice){onScaleDisconnect();}});
-}
-function handleScaleInput(event){
-    const b=new Uint8Array(event.data.buffer);
-    if(b.length>=5){const uc=b[1],exp=b[2]>127?b[2]-256:b[2],wr=b[3]+(b[4]<<8);let w=wr*Math.pow(10,exp);if(uc===2)w*=0.035274;currentWeight=w;$('currentWeight').textContent=w.toFixed(1);}
-}
-function updateScaleUI(connected){
-    const i=$('scaleIndicator');
-    if(connected){i.textContent='⚖️ Scale OK';i.classList.add('connected');$('connectScaleBtn').style.display='none';$('loginScaleBtn').textContent='✓ Scale Connected';$('loginScaleBtn').disabled=true;}
-    else{i.textContent='No Scale';i.classList.remove('connected');$('connectScaleBtn').style.display='block';}
-}
 
 // ===== POLLING =====
 function startPolling(){fetchOrders();pollTimer=setInterval(fetchOrders,POLL_INTERVAL);}
@@ -569,7 +809,8 @@ function handleItemTap(idx){
     const item=workItems[idx];if(!item)return;
     if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;renderWorkItems();return;}
     if(item.needsWeigh){
-        if(!scaleDevice||!scaleDevice.opened){showToast('Connect scale first',true);return;}
+        // Block weighing if scale isn't actively sending data
+        if(scaleState!=='live'){showToast('Scale not connected — tap Reconnect',true);return;}
         if(currentWeight<=0){showToast('Place item on scale first',true);return;}
         if(currentWeight<item.targetOz*0.5){showToast('Wait for scale to settle',true);return;}
         const diff=currentWeight-item.targetOz;
