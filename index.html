@@ -58,8 +58,9 @@
         .count-badge{background:var(--accent);color:white;padding:4px 12px;border-radius:20px;font-size:0.85rem;font-weight:700}
         .order-list{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
         .order-card{background:var(--surface);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all 0.15s;border:2px solid transparent}
-        .order-card:active{transform:scale(0.98)} .order-card.claimed{border-color:var(--warning);opacity:0.6}
+        .order-card:active{transform:scale(0.98)} .order-card.claimed{border-color:var(--warning);opacity:0.6;pointer-events:none}
         .order-card.mine{border-color:var(--success)}
+        .order-card.claiming-now{border-color:var(--accent);opacity:0.5;pointer-events:none}
         .order-card.completed{border-color:var(--success);opacity:0.7;background:rgba(74,222,128,0.08);transition:transform 0.2s,opacity 0.2s}
         .order-card.swiping-away{transform:translateX(-120%);opacity:0}
         .order-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -235,14 +236,14 @@ const POLL_INTERVAL=5000;
 const TOLERANCE=0.5;
 
 // Scale watchdog constants
-const SCALE_VERIFY_TIMEOUT=3000;    // 3s to verify data after open
-const SCALE_DATA_TIMEOUT=10000;     // 10s of no data = stale during use
-const SCALE_WATCHDOG_INTERVAL=2000; // Check every 2s
+const SCALE_VERIFY_TIMEOUT=3000;
+const SCALE_DATA_TIMEOUT=10000;
+const SCALE_WATCHDOG_INTERVAL=2000;
 
-let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null;
+let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null,claiming=false;
 
 // Scale state tracking
-let scaleState='disconnected'; // 'disconnected' | 'connecting' | 'verifying' | 'live' | 'stale'
+let scaleState='disconnected';
 let lastDataReceived=0;
 let scaleWatchdogTimer=null;
 let scaleVerifyTimer=null;
@@ -307,7 +308,6 @@ function setScaleState(newState) {
     }
 }
 
-// Tapping the header indicator triggers reconnect
 $('scaleIndicator').addEventListener('click', () => {
     if (scaleState === 'stale' || scaleState === 'disconnected') {
         forceReconnectScale();
@@ -342,7 +342,6 @@ $('loginScaleBtn').addEventListener('click', () => {
 $('connectScaleBtn').addEventListener('click', connectScale);
 $('reconnectScaleBtn').addEventListener('click', forceReconnectScale);
 
-// Fresh connect — shows Chrome picker
 async function connectScale() {
     try {
         setScaleState('connecting');
@@ -356,13 +355,11 @@ async function connectScale() {
     }
 }
 
-// Force reconnect — close stale device, try auto first, then picker
 async function forceReconnectScale() {
     if (scaleReconnecting) return;
     scaleReconnecting = true;
     console.log('Force reconnect: cleaning up old connection');
 
-    // Close any existing stale device
     if (scaleDevice) {
         try {
             scaleDevice.removeEventListener('inputreport', handleScaleInput);
@@ -376,10 +373,8 @@ async function forceReconnectScale() {
     currentWeight = 0;
     $('currentWeight').textContent = '0.0';
 
-    // Brief pause after closing
     await new Promise(r => setTimeout(r, 500));
 
-    // Try auto-reconnect first (faster for user)
     try {
         const devs = await navigator.hid.getDevices();
         const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
@@ -391,7 +386,6 @@ async function forceReconnectScale() {
         }
     } catch(e) { console.log('Auto path failed:', e.message); }
 
-    // Auto failed — need fresh picker
     try {
         console.log('Force reconnect: opening Chrome picker');
         const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x0922 }, { vendorId: 0x1446 }] });
@@ -408,7 +402,6 @@ async function openScale(device) {
     try {
         scaleDevice = device;
 
-        // Clean close if already open (stale handle)
         if (scaleDevice.opened) {
             try { await scaleDevice.close(); } catch(e) {}
             await new Promise(r => setTimeout(r, 500));
@@ -416,22 +409,18 @@ async function openScale(device) {
 
         await scaleDevice.open();
 
-        // Remove any old listeners before adding new ones
         try { scaleDevice.removeEventListener('inputreport', handleScaleInput); } catch(e) {}
         try { scaleDevice.removeEventListener('close', onScaleDisconnect); } catch(e) {}
 
         scaleDevice.addEventListener('inputreport', handleScaleInput);
         scaleDevice.addEventListener('close', onScaleDisconnect);
 
-        // Don't trust open() — enter verify state and wait for actual data
         setScaleState('verifying');
         console.log('Scale opened, verifying data flow...');
 
-        // Start verification timer
         if (scaleVerifyTimer) clearTimeout(scaleVerifyTimer);
         scaleVerifyTimer = setTimeout(() => {
             if (scaleState === 'verifying') {
-                // No data arrived within timeout — connection is stale
                 console.log('Verify failed: no data received in ' + SCALE_VERIFY_TIMEOUT + 'ms');
                 setScaleState('stale');
                 showToast('Scale not responding — tap Reconnect', true);
@@ -444,7 +433,6 @@ async function openScale(device) {
         console.error('Scale open error:', e);
         showToast('Scale open failed: ' + e.message, true);
 
-        // Retry once after delay
         await new Promise(r => setTimeout(r, 2000));
         try {
             if (!scaleDevice.opened) await scaleDevice.open();
@@ -470,9 +458,8 @@ function onScaleDisconnect() {
     setScaleState('stale');
     showToast('Scale disconnected — tap Reconnect', true);
 
-    // Auto-retry after 3s
     setTimeout(async () => {
-        if (scaleState !== 'stale') return; // Already reconnected
+        if (scaleState !== 'stale') return;
         try {
             const devs = await navigator.hid.getDevices();
             const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
@@ -488,7 +475,6 @@ function handleScaleInput(event) {
     const b = new Uint8Array(event.data.buffer);
     lastDataReceived = Date.now();
 
-    // If we were verifying, we now know data is flowing
     if (scaleState === 'verifying') {
         console.log('Scale verified — data flowing');
         if (scaleVerifyTimer) { clearTimeout(scaleVerifyTimer); scaleVerifyTimer = null; }
@@ -496,7 +482,6 @@ function handleScaleInput(event) {
         showToast('Scale connected!');
     }
 
-    // If we were stale, data resumed
     if (scaleState === 'stale') {
         console.log('Scale data resumed');
         setScaleState('live');
@@ -512,7 +497,6 @@ function handleScaleInput(event) {
     }
 }
 
-// Auto-connect on page load
 async function autoConnectScale() {
     if (!navigator.hid) return;
     try {
@@ -522,7 +506,6 @@ async function autoConnectScale() {
     } catch(e) { console.log('Auto-connect failed:', e.message); }
 }
 
-// Listen for USB plug/unplug events
 if (navigator.hid) {
     navigator.hid.addEventListener('connect', async (e) => {
         if (e.device.vendorId === 0x0922 || e.device.vendorId === 0x1446) {
@@ -668,7 +651,7 @@ $('logoutBtn').addEventListener('click',()=>{
 function startPolling(){fetchOrders();pollTimer=setInterval(fetchOrders,POLL_INTERVAL);}
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 async function fetchOrders(){
-    try{orders=await apiGet('getpendingorders',{location:LOCATION});if(!activeOrder)renderOrderList();$('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();}
+    try{orders=await apiGet('getpendingorders',{location:LOCATION});if(!activeOrder&&!claiming)renderOrderList();$('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();}
     catch(e){$('pollStatus').textContent='Connection error - retrying...';}
 }
 
@@ -761,13 +744,20 @@ async function reopenOrder(id){
 
 // ===== CLAIM =====
 async function claimOrder(id){
+    if(claiming)return;
     const o=orders.find(x=>x.order_id===id);if(!o)return;
+    claiming=true;
+    // Immediate visual feedback so user knows tap registered
+    const card=document.querySelector('.order-card[data-order-id="'+id+'"]');
+    if(card){card.classList.add('claiming-now');card.innerHTML+='<div style="font-size:0.85rem;color:var(--accent);font-weight:700;margin-top:6px;">⏳ Claiming...</div>';}
     try{const r=await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
-    if(r.success){activeOrder=o;activeOrder.claimed_by=currentEmployee.name;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));showWorkScreen();}
-    else{showToast(r.error||'Could not claim',true);fetchOrders();}}catch(e){showToast('Error claiming order',true);}
+    if(r.success){activeOrder=o;activeOrder.claimed_by=currentEmployee.name;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;showWorkScreen();}
+    else{claiming=false;showToast(r.error||'Could not claim',true);fetchOrders();}}catch(e){claiming=false;showToast('Error claiming order',true);}
 }
 function resumeOrder(o){
-    activeOrder=o;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));showWorkScreen();
+    if(claiming)return;
+    claiming=true;
+    activeOrder=o;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;showWorkScreen();
 }
 
 // ===== WORK SCREEN =====
@@ -809,7 +799,6 @@ function handleItemTap(idx){
     const item=workItems[idx];if(!item)return;
     if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;renderWorkItems();return;}
     if(item.needsWeigh){
-        // Block weighing if scale isn't actively sending data
         if(scaleState!=='live'){showToast('Scale not connected — tap Reconnect',true);return;}
         if(currentWeight<=0){showToast('Place item on scale first',true);return;}
         if(currentWeight<item.targetOz*0.5){showToast('Wait for scale to settle',true);return;}
