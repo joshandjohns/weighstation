@@ -205,7 +205,8 @@
     </div>
 
     <!-- WEIGHT WARNING MODAL -->
-    <div class="modal-overlay" id="weightWarningModal"><div class="modal-content">
+    <div class="modal-overlay" id="weightWarningModal"><div class="modal-content" style="position:relative;">
+        <button id="weightWarningClose" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,0.15);border:none;color:var(--text);width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
         <div class="modal-icon" id="warningIcon">⚠️</div>
         <div class="modal-title" id="warningTitle">UNDER WEIGHT</div>
         <div class="modal-weight" id="warningWeight">0.0 oz</div>
@@ -814,10 +815,11 @@ function showWeightWarning(item,weight,type){
     pendingWeighItem={item,weight};
     $('warningWeight').textContent=weight.toFixed(1)+' oz';$('warningTarget').textContent='Target: '+item.targetOz+' oz';
     if(type==='under'){$('warningIcon').textContent='⚠️';$('warningTitle').textContent='UNDER WEIGHT';$('warningTitle').className='modal-title warning-under';$('warningWeight').className='modal-weight warning-under';$('warningMessage').textContent='Add more ice cream and re-weigh.';$('reweighBtn').textContent='Add & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept Anyway';}
-    else{$('warningIcon').textContent='🔴';$('warningTitle').textContent='OVER WEIGHT';$('warningTitle').className='modal-title warning-over';$('warningWeight').className='modal-weight warning-over';$('warningMessage').textContent='Over target. Do NOT remove ice cream. Accept and serve as-is.';$('reweighBtn').style.display='none';$('acceptWeightBtn').textContent='Accept & Continue';}
+    else{$('warningIcon').textContent='🔴';$('warningTitle').textContent='OVER WEIGHT';$('warningTitle').className='modal-title warning-over';$('warningWeight').className='modal-weight warning-over';$('warningMessage').textContent='Over target. Remove some and re-weigh, or accept as-is.';$('reweighBtn').textContent='Remove & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept & Continue';}
     $('weightWarningModal').classList.add('show');
 }
-$('reweighBtn').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;showToast('Add ice cream and tap again');});
+$('reweighBtn').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;showToast('Adjust and re-weigh');});
+$('weightWarningClose').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;});
 $('acceptWeightBtn').addEventListener('click',()=>{
     if(pendingWeighItem){const i=pendingWeighItem.item;i.done=true;i.weightOz=pendingWeighItem.weight;weighFeedback(i,pendingWeighItem.weight);renderWorkItems();}
     $('weightWarningModal').classList.remove('show');pendingWeighItem=null;
