@@ -72,7 +72,7 @@
         .order-card-claimed{font-size:0.8rem;color:var(--warning);font-weight:600;margin-top:4px}
         .order-card-notes{font-size:0.8rem;color:var(--warning);margin-top:4px;font-weight:600}
         .order-card-allergy{background:#dc2626;color:white;padding:8px 12px;border-radius:8px;margin-top:6px;font-weight:900;font-size:0.9rem;text-align:center;letter-spacing:0.5px;animation:allergyPulse 1.5s infinite}
-        .work-item-allergy{background:#dc2626;color:white;padding:6px 10px;border-radius:6px;margin-top:4px;font-weight:800;font-size:0.8rem;letter-spacing:0.5px;animation:allergyPulse 1.5s infinite}
+        .work-item-allergy{background:#dc2626;color:white;padding:8px 12px;border-radius:8px;margin-top:6px;font-weight:900;font-size:1.05rem;letter-spacing:0.5px;animation:allergyPulse 1.5s infinite}
         @keyframes allergyPulse{0%,100%{opacity:1}50%{opacity:0.7}}
         .no-orders{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);gap:10px}
         .no-orders .icon{font-size:3rem} .no-orders .msg{font-size:1.1rem}
@@ -93,25 +93,31 @@
         .scale-feedback{flex:1;text-align:center;font-weight:700;font-size:1rem}
         .scale-connect-btn{background:var(--accent);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer}
         .scale-reconnect-btn{background:var(--danger);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer;animation:staleFlash 1.5s infinite}
-        .items-scroll{flex:1;overflow-y:auto;padding:10px}
-        .section-label{font-size:0.8rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 6px;display:flex;align-items:center;gap:8px}
+
+        /* ITEMS GRID - 2 column layout for landscape tablet */
+        .items-scroll{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
+        .section-label{grid-column:1 / -1;font-size:0.95rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px;display:flex;align-items:center;gap:8px}
         .section-label.weigh{color:var(--weigh-color)} .section-label.prep{color:var(--prep-color)}
-        .work-item{background:var(--surface);border-radius:10px;padding:12px 14px;margin-bottom:6px;cursor:pointer;transition:all 0.15s;border-left:4px solid var(--surface-light)}
+
+        .work-item{background:var(--surface);border-radius:12px;padding:16px 18px;cursor:pointer;transition:all 0.15s;border-left:5px solid var(--surface-light);min-height:80px;display:flex;flex-direction:column;justify-content:center}
         .work-item:active{transform:scale(0.98)}
-        .work-item.weigh-item{border-left-color:var(--weigh-color);background:rgba(59,130,246,0.12);border:2px solid rgba(59,130,246,0.3);border-left:4px solid var(--weigh-color)}
-        .work-item.prep-item{border-left-color:var(--prep-color);background:rgba(139,92,246,0.08);border:2px solid rgba(139,92,246,0.2);border-left:4px solid var(--prep-color)}
+        .work-item.weigh-item{border-left-color:var(--weigh-color);background:rgba(59,130,246,0.12);border:2px solid rgba(59,130,246,0.3);border-left:5px solid var(--weigh-color)}
+        .work-item.prep-item{border-left-color:var(--prep-color);background:rgba(139,92,246,0.08);border:2px solid rgba(139,92,246,0.2);border-left:5px solid var(--prep-color)}
         .work-item.done{opacity:0.5;background:rgba(74,222,128,0.1);border-color:rgba(74,222,128,0.2);border-left-color:var(--success)}
         .work-item-top{display:flex;justify-content:space-between;align-items:center}
-        .work-item-name{font-weight:700;font-size:1rem} .work-item-target{font-size:0.8rem;color:var(--text-dim)}
-        .work-item-flavors{font-size:0.85rem;color:var(--text-dim);margin-top:2px}
-        .work-item-note{font-size:0.8rem;color:var(--warning);font-weight:600;margin-top:2px}
-        .work-item-weight{font-size:0.85rem;font-weight:700;margin-top:4px}
+        .work-item-name{font-weight:800;font-size:1.25rem} .work-item-target{font-size:1rem;color:var(--text-dim);font-weight:700}
+        .work-item-flavors{font-size:1.15rem;color:var(--text-dim);margin-top:4px;font-weight:600}
+        .work-item-note{font-size:1rem;color:var(--warning);font-weight:700;margin-top:4px}
+        .work-item-weight{font-size:1rem;font-weight:700;margin-top:6px}
         .work-item-weight.good{color:var(--success)} .work-item-weight.over{color:var(--danger)} .work-item-weight.under{color:var(--warning)}
-        .item-check{font-size:1.5rem;color:var(--success)} .item-type-icon{font-size:0.85rem;margin-right:4px}
+        .item-check{font-size:1.8rem;color:var(--success)} .item-type-icon{font-size:1rem;margin-right:4px}
         .work-footer{padding:10px 15px;border-top:1px solid rgba(255,255,255,0.1)}
         .complete-btn{width:100%;padding:16px;border-radius:12px;border:none;font-family:inherit;font-size:1.1rem;font-weight:800;cursor:pointer}
         .complete-btn.ready{background:var(--success);color:var(--bg)} .complete-btn.partial{background:var(--warning);color:var(--bg)}
         .complete-btn:disabled{opacity:0.4;cursor:not-allowed;background:var(--surface-light);color:var(--text-dim)}
+
+        /* Free sprinkles badge */
+        .work-item-sprinkles{font-size:1rem;color:#16a34a;font-weight:700;margin-top:4px}
 
         /* MODALS */
         .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;z-index:200}
@@ -748,7 +754,6 @@ async function claimOrder(id){
     if(claiming)return;
     const o=orders.find(x=>x.order_id===id);if(!o)return;
     claiming=true;
-    // Immediate visual feedback so user knows tap registered
     const card=document.querySelector('.order-card[data-order-id="'+id+'"]');
     if(card){card.classList.add('claiming-now');card.innerHTML+='<div style="font-size:0.85rem;color:var(--accent);font-weight:700;margin-top:6px;">⏳ Claiming...</div>';}
     try{const r=await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
@@ -785,12 +790,12 @@ function renderWorkItem(item,isWeigh){
     else if(item.done){wt='<div class="work-item-weight good">✓ Done</div>';}
     let h='<div class="work-item '+tc+dc+'" data-idx="'+item.idx+'"><div class="work-item-top">';
     h+='<span class="work-item-name"><span class="item-type-icon">'+ic+'</span> '+esc(item.name)+'</span>';
-    if(isWeigh&&item.targetOz)h+='<span class="work-item-target">'+item.targetOz+' oz</span>';
+    if(isWeigh&&item.targetOz)h+='<span class="work-item-target">Target: '+item.targetOz+' oz</span>';
     if(item.done)h+='<span class="item-check">✓</span>';
     h+='</div>';
     if(item.flavors)h+='<div class="work-item-flavors">'+esc(item.flavors)+'</div>';
     if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
-    if(item.freeSprinkles)h+='<div style="font-size:0.8rem;color:#16a34a;font-weight:700;margin-top:2px;">🎉 Free Sprinkles</div>';
+    if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
     if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
     h+=wt+'</div>';return h;
 }
