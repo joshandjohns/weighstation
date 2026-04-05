@@ -805,7 +805,7 @@ function handleItemTap(idx){
     const item=workItems[idx];if(!item)return;
     if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;renderWorkItems();return;}
     if(item.needsWeigh){
-        if(scaleState!=='live'){showToast('Scale not connected — tap Reconnect',true);return;}
+        if(scaleState!=='live'){item.done=true;item.skipped=true;item.skipReason='Scale not connected';renderWorkItems();showToast('✓ '+item.name+' marked done (no scale)');return;}
         if(currentWeight<=0){showToast('Place item on scale first',true);return;}
         if(currentWeight<item.targetOz*0.5){showToast('Wait for scale to settle',true);return;}
         const diff=currentWeight-item.targetOz;
