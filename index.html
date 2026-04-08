@@ -490,26 +490,24 @@ function renderOrderList(){
     });
     list.innerHTML=h;
 
-    list.querySelectorAll('.order-card-delete').forEach(btn=>{
-        btn.addEventListener('click',e=>{
+    // Single delegated listener on the list — no bubbling confusion
+    list.addEventListener('click', e => {
+        const deleteBtn = e.target.closest('.order-card-delete');
+        if (deleteBtn) {
             e.stopPropagation();
             e.preventDefault();
-            pendingDeleteOrderId=btn.dataset.deleteId;
-            $('deleteOrderMessage').textContent='Delete order for "'+btn.dataset.car+'"? Use this for skipped drivers or test orders only.';
+            pendingDeleteOrderId = deleteBtn.dataset.deleteId;
+            $('deleteOrderMessage').textContent = 'Delete order for "' + deleteBtn.dataset.car + '"? Use this for skipped drivers or test orders only.';
             $('deleteOrderModal').classList.add('show');
-        });
-        // Also block mousedown so the card never sees it
-        btn.addEventListener('mousedown',e=>{e.stopPropagation();e.preventDefault();});
+            return;
+        }
+        const card = e.target.closest('.order-card:not(.claimed)');
+        if (!card) return;
+        const oid = card.dataset.orderId;
+        if (card.dataset.completed) { reopenOrder(oid); return; }
+        const o = orders.find(x => x.order_id === oid);
+        if (o && o.claimed_by === currentEmployee.name) { resumeOrder(o); } else { claimOrder(oid); }
     });
-
-    list.querySelectorAll('.order-card:not(.claimed)').forEach(c=>{c.addEventListener('click',(e)=>{
-        if(e.target.closest('.order-card-delete'))return;
-        if(pendingDeleteOrderId)return;
-        const oid=c.dataset.orderId;
-        if(c.dataset.completed){reopenOrder(oid);return;}
-        const o=orders.find(x=>x.order_id===oid);
-        if(o&&o.claimed_by===currentEmployee.name){resumeOrder(o);}else{claimOrder(oid);}
-    });});
     list.querySelectorAll('.order-card.completed').forEach(c=>setupSwipeDismiss(c));
 }
 
