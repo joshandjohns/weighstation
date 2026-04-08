@@ -528,13 +528,13 @@ $('deleteConfirmBtn').addEventListener('click',async()=>{
     const id=pendingDeleteOrderId;
     $('deleteOrderModal').classList.remove('show');
     pendingDeleteOrderId=null;
-    // Track locally so polling doesn't bring it back
+    // Track locally immediately so polling never brings it back
     deletedOrderIds.push(id);
     orders=orders.filter(o=>o.order_id!==id);
     renderOrderList();
     showToast('Order deleted');
-    // Best-effort server delete
-    try{await apiGet('deleteorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});}catch(e){}
+    // Delete from the sheet on the server
+    try{await apiPost('deleteorder',{order_id:id});}catch(e){console.log('Server delete failed:',e);}
 });
 
 // ===== REOPEN =====
