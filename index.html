@@ -79,8 +79,10 @@
         .poll-status{font-size:0.75rem;color:var(--text-dim);text-align:center;padding:8px}
 
         /* DELETE BUTTON ON ORDER CARD */
-        .order-card-delete{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#ef4444;width:32px;height:32px;border-radius:8px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.15s}
-        .order-card-delete:active{background:rgba(239,68,68,0.4)}
+        .order-card-wrap{position:relative;display:flex;align-items:stretch;gap:6px}
+        .order-card-wrap .order-card{flex:1;min-width:0}
+        .order-card-delete{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#ef4444;width:44px;border-radius:12px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.15s;padding:0}
+        .order-card-delete:hover{background:rgba(239,68,68,0.35)}
 
         /* ORDER WORK */
         .order-work-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
@@ -456,23 +458,29 @@ function renderOrderList(){
     let h='';
     mine.forEach(o=>{
         const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
+        h+='<div class="order-card-wrap">';
         h+='<div class="order-card mine" data-order-id="'+o.order_id+'">';
-        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><div style="display:flex;align-items:center;gap:8px;"><span class="order-card-time">'+orderAge(o.created_at)+'</span><button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button></div></div>';
+        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
         h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
         h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">▶ Resume your order</div>';
         if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
         if(o.items.some(i=>i.allergyAlert))h+='<div class="order-card-allergy">⚠️🧤 ALLERGY ITEM IN ORDER 🧤⚠️</div>';
         h+='</div>';
+        h+='<button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button>';
+        h+='</div>';
     });
     unclaimed.forEach(o=>{
         const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
+        h+='<div class="order-card-wrap">';
         h+='<div class="order-card" data-order-id="'+o.order_id+'">';
-        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><div style="display:flex;align-items:center;gap:8px;"><span class="order-card-time">'+orderAge(o.created_at)+'</span><button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button></div></div>';
+        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
         h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
         if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
         if(o.items.some(i=>i.allergyAlert))h+='<div class="order-card-allergy">⚠️🧤 ALLERGY ITEM IN ORDER 🧤⚠️</div>';
+        h+='</div>';
+        h+='<button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button>';
         h+='</div>';
     });
     others.forEach(o=>{
@@ -490,23 +498,23 @@ function renderOrderList(){
     });
     list.innerHTML=h;
 
-    // Single delegated listener on the list — no bubbling confusion
-    list.addEventListener('click', e => {
-        const deleteBtn = e.target.closest('.order-card-delete');
-        if (deleteBtn) {
-            e.stopPropagation();
-            e.preventDefault();
-            pendingDeleteOrderId = deleteBtn.dataset.deleteId;
-            $('deleteOrderMessage').textContent = 'Delete order for "' + deleteBtn.dataset.car + '"? Use this for skipped drivers or test orders only.';
+    // Delete buttons — completely outside the card so no bubbling issues
+    list.querySelectorAll('.order-card-delete').forEach(btn => {
+        btn.addEventListener('click', e => {
+            pendingDeleteOrderId = btn.dataset.deleteId;
+            $('deleteOrderMessage').textContent = 'Delete order for "' + btn.dataset.car + '"? Use this for skipped drivers or test orders only.';
             $('deleteOrderModal').classList.add('show');
-            return;
-        }
-        const card = e.target.closest('.order-card:not(.claimed)');
-        if (!card) return;
-        const oid = card.dataset.orderId;
-        if (card.dataset.completed) { reopenOrder(oid); return; }
-        const o = orders.find(x => x.order_id === oid);
-        if (o && o.claimed_by === currentEmployee.name) { resumeOrder(o); } else { claimOrder(oid); }
+        });
+    });
+
+    // Card clicks — the delete button is NOT inside the card anymore
+    list.querySelectorAll('.order-card:not(.claimed)').forEach(c => {
+        c.addEventListener('click', () => {
+            const oid = c.dataset.orderId;
+            if (c.dataset.completed) { reopenOrder(oid); return; }
+            const o = orders.find(x => x.order_id === oid);
+            if (o && o.claimed_by === currentEmployee.name) { resumeOrder(o); } else { claimOrder(oid); }
+        });
     });
     list.querySelectorAll('.order-card.completed').forEach(c=>setupSwipeDismiss(c));
 }
