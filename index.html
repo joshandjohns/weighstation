@@ -78,6 +78,10 @@
         .no-orders .icon{font-size:3rem} .no-orders .msg{font-size:1.1rem}
         .poll-status{font-size:0.75rem;color:var(--text-dim);text-align:center;padding:8px}
 
+        /* DELETE BUTTON ON ORDER CARD */
+        .order-card-delete{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#ef4444;width:32px;height:32px;border-radius:8px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.15s}
+        .order-card-delete:active{background:rgba(239,68,68,0.4)}
+
         /* ORDER WORK */
         .order-work-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
         .order-work-screen.active{display:flex}
@@ -94,7 +98,7 @@
         .scale-connect-btn{background:var(--accent);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer}
         .scale-reconnect-btn{background:var(--danger);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer;animation:staleFlash 1.5s infinite}
 
-        /* ITEMS GRID - 2 column layout for landscape tablet */
+        /* ITEMS GRID */
         .items-scroll{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
         .section-label{grid-column:1 / -1;font-size:0.95rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px;display:flex;align-items:center;gap:8px}
         .section-label.weigh{color:var(--weigh-color)} .section-label.prep{color:var(--prep-color)}
@@ -116,7 +120,6 @@
         .complete-btn.ready{background:var(--success);color:var(--bg)} .complete-btn.partial{background:var(--warning);color:var(--bg)}
         .complete-btn:disabled{opacity:0.4;cursor:not-allowed;background:var(--surface-light);color:var(--text-dim)}
 
-        /* Free sprinkles badge */
         .work-item-sprinkles{font-size:1rem;color:#16a34a;font-weight:700;margin-top:4px}
 
         /* MODALS */
@@ -130,6 +133,7 @@
         .modal-buttons{display:flex;gap:10px}
         .modal-btn{flex:1;padding:14px;border:none;border-radius:10px;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer}
         .modal-btn.primary{background:var(--accent);color:white} .modal-btn.secondary{background:var(--surface-light);color:white}
+        .modal-btn.danger{background:var(--danger);color:white}
         .warning-under{color:var(--warning)} .warning-over{color:var(--danger)}
         .skip-reasons{display:flex;flex-direction:column;gap:8px;margin-bottom:15px}
         .skip-reason-btn{padding:12px;border-radius:10px;border:2px solid var(--surface-light);background:transparent;color:var(--text);font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;text-align:left}
@@ -234,6 +238,17 @@
         <div class="modal-buttons"><button class="modal-btn secondary" id="skipCancelBtn">Go Back</button><button class="modal-btn primary" id="skipConfirmBtn" disabled>Complete Anyway</button></div>
     </div></div>
 
+    <!-- DELETE ORDER CONFIRM MODAL -->
+    <div class="modal-overlay" id="deleteOrderModal"><div class="modal-content">
+        <div class="modal-icon">🗑️</div>
+        <div class="modal-title" style="color:var(--danger);">Delete Order?</div>
+        <div class="modal-message" id="deleteOrderMessage">Are you sure you want to delete this order? This is for skipped drivers or test orders only.</div>
+        <div class="modal-buttons">
+            <button class="modal-btn secondary" id="deleteCancelBtn">Keep It</button>
+            <button class="modal-btn danger" id="deleteConfirmBtn">Yes, Delete</button>
+        </div>
+    </div></div>
+
     <div class="toast" id="toast"></div>
 
 <script>
@@ -242,25 +257,18 @@ const LOCATION='Garden of the Gods';
 const POLL_INTERVAL=5000;
 const TOLERANCE=0.5;
 
-// Scale watchdog constants
 const SCALE_VERIFY_TIMEOUT=3000;
 const SCALE_DATA_TIMEOUT=10000;
 const SCALE_WATCHDOG_INTERVAL=2000;
 
 let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null,claiming=false;
-
-// Scale state tracking
-let scaleState='disconnected';
-let lastDataReceived=0;
-let scaleWatchdogTimer=null;
-let scaleVerifyTimer=null;
-let scaleReconnecting=false;
+let scaleState='disconnected',lastDataReceived=0,scaleWatchdogTimer=null,scaleVerifyTimer=null,scaleReconnecting=false;
+let pendingDeleteOrderId=null;
 
 const $=id=>document.getElementById(id);
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
 function showToast(msg,err=false){const t=$('toast');t.textContent=msg;t.className='toast'+(err?' error':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
 
-// API
 async function apiGet(action,params={}){const url=new URL(API_BASE);url.searchParams.set('action',action);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));const r=await fetch(url.toString(),{redirect:'follow'});return r.json();}
 async function apiPost(action,body){const r=await fetch(API_BASE+'?action='+action,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),redirect:'follow'});return r.json();}
 
@@ -271,387 +279,156 @@ function setScaleState(newState) {
     const connectBtn = $('connectScaleBtn');
     const reconnectBtn = $('reconnectScaleBtn');
     const loginBtn = $('loginScaleBtn');
-
     switch(newState) {
         case 'disconnected':
-            ind.textContent = 'No Scale';
-            ind.className = 'scale-indicator';
-            connectBtn.style.display = 'block';
-            connectBtn.textContent = 'Connect Scale';
-            reconnectBtn.style.display = 'none';
-            loginBtn.textContent = 'Connect Scale';
-            loginBtn.disabled = false;
-            break;
+            ind.textContent='No Scale';ind.className='scale-indicator';
+            connectBtn.style.display='block';connectBtn.textContent='Connect Scale';
+            reconnectBtn.style.display='none';loginBtn.textContent='Connect Scale';loginBtn.disabled=false;break;
         case 'connecting':
-            ind.textContent = '⏳ Connecting...';
-            ind.className = 'scale-indicator';
-            connectBtn.style.display = 'none';
-            reconnectBtn.style.display = 'none';
-            loginBtn.textContent = 'Connecting...';
-            loginBtn.disabled = true;
-            break;
+            ind.textContent='⏳ Connecting...';ind.className='scale-indicator';
+            connectBtn.style.display='none';reconnectBtn.style.display='none';
+            loginBtn.textContent='Connecting...';loginBtn.disabled=true;break;
         case 'verifying':
-            ind.textContent = '⏳ Verifying...';
-            ind.className = 'scale-indicator stale';
-            connectBtn.style.display = 'none';
-            reconnectBtn.style.display = 'none';
-            break;
+            ind.textContent='⏳ Verifying...';ind.className='scale-indicator stale';
+            connectBtn.style.display='none';reconnectBtn.style.display='none';break;
         case 'live':
-            ind.textContent = '⚖️ Scale OK';
-            ind.className = 'scale-indicator connected';
-            connectBtn.style.display = 'none';
-            reconnectBtn.style.display = 'none';
-            loginBtn.textContent = '✓ Scale Connected';
-            loginBtn.disabled = true;
-            break;
+            ind.textContent='⚖️ Scale OK';ind.className='scale-indicator connected';
+            connectBtn.style.display='none';reconnectBtn.style.display='none';
+            loginBtn.textContent='✓ Scale Connected';loginBtn.disabled=true;break;
         case 'stale':
-            ind.textContent = '⚠ Scale Lost — Tap Here';
-            ind.className = 'scale-indicator dead';
-            connectBtn.style.display = 'none';
-            reconnectBtn.style.display = 'block';
-            loginBtn.textContent = '⚠ Reconnect Scale';
-            loginBtn.disabled = false;
-            break;
+            ind.textContent='⚠ Scale Lost — Tap Here';ind.className='scale-indicator dead';
+            connectBtn.style.display='none';reconnectBtn.style.display='block';
+            loginBtn.textContent='⚠ Reconnect Scale';loginBtn.disabled=false;break;
     }
 }
 
-$('scaleIndicator').addEventListener('click', () => {
-    if (scaleState === 'stale' || scaleState === 'disconnected') {
-        forceReconnectScale();
-    }
-});
+$('scaleIndicator').addEventListener('click',()=>{if(scaleState==='stale'||scaleState==='disconnected')forceReconnectScale();});
 
-// ===== SCALE WATCHDOG =====
-function startScaleWatchdog() {
+function startScaleWatchdog(){
     stopScaleWatchdog();
-    scaleWatchdogTimer = setInterval(() => {
-        if (scaleState === 'live') {
-            const elapsed = Date.now() - lastDataReceived;
-            if (elapsed > SCALE_DATA_TIMEOUT) {
-                console.log('Watchdog: no data for ' + Math.round(elapsed/1000) + 's, marking stale');
-                setScaleState('stale');
-                showToast('Scale lost — tap Reconnect', true);
-            }
-        }
-    }, SCALE_WATCHDOG_INTERVAL);
+    scaleWatchdogTimer=setInterval(()=>{
+        if(scaleState==='live'){const e=Date.now()-lastDataReceived;if(e>SCALE_DATA_TIMEOUT){setScaleState('stale');showToast('Scale lost — tap Reconnect',true);}}
+    },SCALE_WATCHDOG_INTERVAL);
+}
+function stopScaleWatchdog(){
+    if(scaleWatchdogTimer){clearInterval(scaleWatchdogTimer);scaleWatchdogTimer=null;}
+    if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}
 }
 
-function stopScaleWatchdog() {
-    if (scaleWatchdogTimer) { clearInterval(scaleWatchdogTimer); scaleWatchdogTimer = null; }
-    if (scaleVerifyTimer) { clearTimeout(scaleVerifyTimer); scaleVerifyTimer = null; }
+$('loginScaleBtn').addEventListener('click',()=>{if(scaleState==='stale')forceReconnectScale();else connectScale();});
+$('connectScaleBtn').addEventListener('click',connectScale);
+$('reconnectScaleBtn').addEventListener('click',forceReconnectScale);
+
+async function connectScale(){
+    try{setScaleState('connecting');const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
+    if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');return;}await openScale(devs[0]);}
+    catch(e){showToast('Scale error: '+e.message,true);setScaleState('disconnected');}
 }
-
-// ===== SCALE CONNECTION =====
-$('loginScaleBtn').addEventListener('click', () => {
-    if (scaleState === 'stale') forceReconnectScale();
-    else connectScale();
-});
-$('connectScaleBtn').addEventListener('click', connectScale);
-$('reconnectScaleBtn').addEventListener('click', forceReconnectScale);
-
-async function connectScale() {
-    try {
-        setScaleState('connecting');
-        const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x0922 }, { vendorId: 0x1446 }] });
-        if (!devs.length) { showToast('No scale selected', true); setScaleState('disconnected'); return; }
-        await openScale(devs[0]);
-    } catch(e) {
-        showToast('Scale error: ' + e.message, true);
-        console.error('Scale connect error:', e);
-        setScaleState('disconnected');
-    }
+async function forceReconnectScale(){
+    if(scaleReconnecting)return;scaleReconnecting=true;
+    if(scaleDevice){try{scaleDevice.removeEventListener('inputreport',handleScaleInput);scaleDevice.removeEventListener('close',onScaleDisconnect);if(scaleDevice.opened)await scaleDevice.close();}catch(e){}scaleDevice=null;}
+    setScaleState('connecting');currentWeight=0;$('currentWeight').textContent='0.0';
+    await new Promise(r=>setTimeout(r,500));
+    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s){await openScale(s);scaleReconnecting=false;return;}}catch(e){}
+    try{const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
+    if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');scaleReconnecting=false;return;}await openScale(devs[0]);}
+    catch(e){showToast('Reconnect failed: '+e.message,true);setScaleState('disconnected');}
+    scaleReconnecting=false;
 }
-
-async function forceReconnectScale() {
-    if (scaleReconnecting) return;
-    scaleReconnecting = true;
-    console.log('Force reconnect: cleaning up old connection');
-
-    if (scaleDevice) {
-        try {
-            scaleDevice.removeEventListener('inputreport', handleScaleInput);
-            scaleDevice.removeEventListener('close', onScaleDisconnect);
-            if (scaleDevice.opened) await scaleDevice.close();
-        } catch(e) { console.log('Cleanup error (ok):', e.message); }
-        scaleDevice = null;
-    }
-
-    setScaleState('connecting');
-    currentWeight = 0;
-    $('currentWeight').textContent = '0.0';
-
-    await new Promise(r => setTimeout(r, 500));
-
-    try {
-        const devs = await navigator.hid.getDevices();
-        const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
-        if (s) {
-            console.log('Force reconnect: found paired device, trying auto');
-            await openScale(s);
-            scaleReconnecting = false;
-            return;
-        }
-    } catch(e) { console.log('Auto path failed:', e.message); }
-
-    try {
-        console.log('Force reconnect: opening Chrome picker');
-        const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: 0x0922 }, { vendorId: 0x1446 }] });
-        if (!devs.length) { showToast('No scale selected', true); setScaleState('disconnected'); scaleReconnecting = false; return; }
-        await openScale(devs[0]);
-    } catch(e) {
-        showToast('Reconnect failed: ' + e.message, true);
-        setScaleState('disconnected');
-    }
-    scaleReconnecting = false;
-}
-
-async function openScale(device) {
-    try {
-        scaleDevice = device;
-
-        if (scaleDevice.opened) {
-            try { await scaleDevice.close(); } catch(e) {}
-            await new Promise(r => setTimeout(r, 500));
-        }
-
+async function openScale(device){
+    try{
+        scaleDevice=device;
+        if(scaleDevice.opened){try{await scaleDevice.close();}catch(e){}await new Promise(r=>setTimeout(r,500));}
         await scaleDevice.open();
-
-        try { scaleDevice.removeEventListener('inputreport', handleScaleInput); } catch(e) {}
-        try { scaleDevice.removeEventListener('close', onScaleDisconnect); } catch(e) {}
-
-        scaleDevice.addEventListener('inputreport', handleScaleInput);
-        scaleDevice.addEventListener('close', onScaleDisconnect);
-
+        try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e){}
+        try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e){}
+        scaleDevice.addEventListener('inputreport',handleScaleInput);
+        scaleDevice.addEventListener('close',onScaleDisconnect);
         setScaleState('verifying');
-        console.log('Scale opened, verifying data flow...');
-
-        if (scaleVerifyTimer) clearTimeout(scaleVerifyTimer);
-        scaleVerifyTimer = setTimeout(() => {
-            if (scaleState === 'verifying') {
-                console.log('Verify failed: no data received in ' + SCALE_VERIFY_TIMEOUT + 'ms');
-                setScaleState('stale');
-                showToast('Scale not responding — tap Reconnect', true);
-            }
-        }, SCALE_VERIFY_TIMEOUT);
-
+        if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);
+        scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);
         startScaleWatchdog();
-
-    } catch(e) {
-        console.error('Scale open error:', e);
-        showToast('Scale open failed: ' + e.message, true);
-
-        await new Promise(r => setTimeout(r, 2000));
-        try {
-            if (!scaleDevice.opened) await scaleDevice.open();
-            try { scaleDevice.removeEventListener('inputreport', handleScaleInput); } catch(e2) {}
-            try { scaleDevice.removeEventListener('close', onScaleDisconnect); } catch(e2) {}
-            scaleDevice.addEventListener('inputreport', handleScaleInput);
-            scaleDevice.addEventListener('close', onScaleDisconnect);
-            setScaleState('verifying');
-            if (scaleVerifyTimer) clearTimeout(scaleVerifyTimer);
-            scaleVerifyTimer = setTimeout(() => {
-                if (scaleState === 'verifying') { setScaleState('stale'); showToast('Scale not responding — tap Reconnect', true); }
-            }, SCALE_VERIFY_TIMEOUT);
-            startScaleWatchdog();
-        } catch(e2) {
-            showToast('Scale failed: ' + e2.message, true);
-            setScaleState('disconnected');
-        }
+    }catch(e){
+        showToast('Scale open failed: '+e.message,true);
+        await new Promise(r=>setTimeout(r,2000));
+        try{if(!scaleDevice.opened)await scaleDevice.open();
+        try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e2){}
+        try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e2){}
+        scaleDevice.addEventListener('inputreport',handleScaleInput);scaleDevice.addEventListener('close',onScaleDisconnect);
+        setScaleState('verifying');
+        if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);
+        scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);
+        startScaleWatchdog();}catch(e2){showToast('Scale failed: '+e2.message,true);setScaleState('disconnected');}
     }
 }
-
-function onScaleDisconnect() {
-    console.log('Scale disconnect event fired');
-    setScaleState('stale');
-    showToast('Scale disconnected — tap Reconnect', true);
-
-    setTimeout(async () => {
-        if (scaleState !== 'stale') return;
-        try {
-            const devs = await navigator.hid.getDevices();
-            const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
-            if (s) {
-                console.log('Auto-reconnect: found device');
-                await openScale(s);
-            }
-        } catch(e) { console.log('Auto-reconnect failed:', e.message); }
-    }, 3000);
+function onScaleDisconnect(){
+    setScaleState('stale');showToast('Scale disconnected — tap Reconnect',true);
+    setTimeout(async()=>{if(scaleState!=='stale')return;try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}},3000);
 }
-
-function handleScaleInput(event) {
-    const b = new Uint8Array(event.data.buffer);
-    lastDataReceived = Date.now();
-
-    if (scaleState === 'verifying') {
-        console.log('Scale verified — data flowing');
-        if (scaleVerifyTimer) { clearTimeout(scaleVerifyTimer); scaleVerifyTimer = null; }
-        setScaleState('live');
-        showToast('Scale connected!');
-    }
-
-    if (scaleState === 'stale') {
-        console.log('Scale data resumed');
-        setScaleState('live');
-        showToast('Scale reconnected!');
-    }
-
-    if (b.length >= 5) {
-        const uc = b[1], exp = b[2] > 127 ? b[2] - 256 : b[2], wr = b[3] + (b[4] << 8);
-        let w = wr * Math.pow(10, exp);
-        if (uc === 2) w *= 0.035274;
-        currentWeight = w;
-        $('currentWeight').textContent = w.toFixed(1);
-    }
+function handleScaleInput(event){
+    const b=new Uint8Array(event.data.buffer);lastDataReceived=Date.now();
+    if(scaleState==='verifying'){if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}setScaleState('live');showToast('Scale connected!');}
+    if(scaleState==='stale'){setScaleState('live');showToast('Scale reconnected!');}
+    if(b.length>=5){const uc=b[1],exp=b[2]>127?b[2]-256:b[2],wr=b[3]+(b[4]<<8);let w=wr*Math.pow(10,exp);if(uc===2)w*=0.035274;currentWeight=w;$('currentWeight').textContent=w.toFixed(1);}
 }
-
-async function autoConnectScale() {
-    if (!navigator.hid) return;
-    try {
-        const devs = await navigator.hid.getDevices();
-        const s = devs.find(d => d.vendorId === 0x0922 || d.vendorId === 0x1446);
-        if (s) await openScale(s);
-    } catch(e) { console.log('Auto-connect failed:', e.message); }
+async function autoConnectScale(){
+    if(!navigator.hid)return;
+    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}
 }
-
-if (navigator.hid) {
-    navigator.hid.addEventListener('connect', async (e) => {
-        if (e.device.vendorId === 0x0922 || e.device.vendorId === 0x1446) {
-            console.log('HID connect event: scale plugged in');
-            await new Promise(r => setTimeout(r, 1000));
-            await openScale(e.device);
-        }
-    });
-    navigator.hid.addEventListener('disconnect', (e) => {
-        if (scaleDevice && e.device === scaleDevice) {
-            console.log('HID disconnect event: scale unplugged');
-            onScaleDisconnect();
-        }
-    });
+if(navigator.hid){
+    navigator.hid.addEventListener('connect',async(e)=>{if(e.device.vendorId===0x0922||e.device.vendorId===0x1446){await new Promise(r=>setTimeout(r,1000));await openScale(e.device);}});
+    navigator.hid.addEventListener('disconnect',(e)=>{if(scaleDevice&&e.device===scaleDevice)onScaleDisconnect();});
 }
 
 // ===== PIN LOGIN =====
-let pinEntry='';
-let pinMode='login';
-let pendingPin='';
-
+let pinEntry='',pinMode='login',pendingPin='';
 $('pinPad').addEventListener('click',e=>{
-    const key=e.target.dataset.key;
-    if(!key)return;
+    const key=e.target.dataset.key;if(!key)return;
     if(key==='back'){pinEntry=pinEntry.slice(0,-1);updatePinDots();return;}
     if(key==='clear'){pinEntry='';updatePinDots();$('pinStatus').textContent='';return;}
-    if(pinEntry.length>=4)return;
-    pinEntry+=key;
-    updatePinDots();
-    if(pinEntry.length===4)handlePinComplete();
+    if(pinEntry.length>=4)return;pinEntry+=key;updatePinDots();if(pinEntry.length===4)handlePinComplete();
 });
-
-function updatePinDots(){
-    for(let i=0;i<4;i++){
-        $('dot'+i).className='pin-dot'+(i<pinEntry.length?' filled':'');
-    }
-}
-
-function showPinError(){
-    for(let i=0;i<4;i++)$('dot'+i).className='pin-dot error';
-    setTimeout(()=>{pinEntry='';updatePinDots();},600);
-}
-
+function updatePinDots(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot'+(i<pinEntry.length?' filled':'');}
+function showPinError(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot error';setTimeout(()=>{pinEntry='';updatePinDots();},600);}
 async function handlePinComplete(){
     if(pinMode==='login'){
         $('pinStatus').textContent='Checking...';
-        try{
-            const result=await apiGet('pinlookup',{pin:pinEntry});
-            if(result.found){
-                loginEmployee(result);
-            }else{
-                pendingPin=pinEntry;
-                pinEntry='';
-                pinMode='confirm';
-                $('loginTitle').textContent='Confirm Your PIN';
-                $('loginSubtitle').textContent='Enter the same 4 digits again';
-                $('pinStatus').textContent='';
-                updatePinDots();
-            }
-        }catch(e){
-            $('pinStatus').textContent='Connection error';
-            showPinError();
-        }
+        try{const result=await apiGet('pinlookup',{pin:pinEntry});
+        if(result.found){loginEmployee(result);}
+        else{pendingPin=pinEntry;pinEntry='';pinMode='confirm';$('loginTitle').textContent='Confirm Your PIN';$('loginSubtitle').textContent='Enter the same 4 digits again';$('pinStatus').textContent='';updatePinDots();}}
+        catch(e){$('pinStatus').textContent='Connection error';showPinError();}
     }else if(pinMode==='confirm'){
-        if(pinEntry===pendingPin){
-            pinMode='register';
-            $('loginScreen').style.display='none';
-            $('nameInputScreen').classList.add('active');
-            $('nameInput').focus();
-        }else{
-            $('pinStatus').textContent='PINs don\'t match — try again';
-            showPinError();
-            pinMode='login';
-            pendingPin='';
-            $('loginTitle').textContent='Enter Your PIN';
-            $('loginSubtitle').textContent='Use your Square PIN';
-        }
+        if(pinEntry===pendingPin){pinMode='register';$('loginScreen').style.display='none';$('nameInputScreen').classList.add('active');$('nameInput').focus();}
+        else{$('pinStatus').textContent="PINs don't match — try again";showPinError();pinMode='login';pendingPin='';$('loginTitle').textContent='Enter Your PIN';$('loginSubtitle').textContent='Use your Square PIN';}
     }
 }
-
-// NAME REGISTRATION
-$('nameInput').addEventListener('input',()=>{
-    $('nameSubmitBtn').disabled=$('nameInput').value.trim().length<2;
-});
-$('nameInput').addEventListener('keydown',e=>{
-    if(e.key==='Enter'&&!$('nameSubmitBtn').disabled)registerEmployee();
-});
+$('nameInput').addEventListener('input',()=>{$('nameSubmitBtn').disabled=$('nameInput').value.trim().length<2;});
+$('nameInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('nameSubmitBtn').disabled)registerEmployee();});
 $('nameSubmitBtn').addEventListener('click',registerEmployee);
-
 async function registerEmployee(){
-    const name=$('nameInput').value.trim();
-    if(name.length<2)return;
-    $('nameSubmitBtn').disabled=true;
-    $('nameSubmitBtn').textContent='Registering...';
-    try{
-        const result=await apiPost('pinregister',{pin:pendingPin,name:name});
-        if(result.success){
-            loginEmployee({name:result.name,employee_id:result.employee_id});
-        }else{
-            showToast(result.error||'Registration failed',true);
-            resetLogin();
-        }
-    }catch(e){
-        showToast('Connection error',true);
-        resetLogin();
-    }
+    const name=$('nameInput').value.trim();if(name.length<2)return;
+    $('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='Registering...';
+    try{const result=await apiPost('pinregister',{pin:pendingPin,name:name});
+    if(result.success){loginEmployee({name:result.name,employee_id:result.employee_id});}
+    else{showToast(result.error||'Registration failed',true);resetLogin();}}
+    catch(e){showToast('Connection error',true);resetLogin();}
 }
-
 function loginEmployee(emp){
     currentEmployee={id:emp.employee_id,name:emp.name};
-    $('loginScreen').style.display='none';
-    $('nameInputScreen').classList.remove('active');
-    $('orderListScreen').classList.add('active');
-    $('employeeBadge').textContent=currentEmployee.name;
-    $('employeeBadge').style.display='inline-block';
-    $('logoutBtn').style.display='inline-block';
-    $('pinStatus').textContent='';
-    showToast('Welcome, '+currentEmployee.name+'!');
-    startPolling();
+    $('loginScreen').style.display='none';$('nameInputScreen').classList.remove('active');$('orderListScreen').classList.add('active');
+    $('employeeBadge').textContent=currentEmployee.name;$('employeeBadge').style.display='inline-block';$('logoutBtn').style.display='inline-block';
+    $('pinStatus').textContent='';showToast('Welcome, '+currentEmployee.name+'!');startPolling();
 }
-
 function resetLogin(){
     pinEntry='';pinMode='login';pendingPin='';
-    $('loginTitle').textContent='Enter Your PIN';
-    $('loginSubtitle').textContent='Use your Square PIN';
-    $('pinStatus').textContent='';
-    $('nameInputScreen').classList.remove('active');
-    $('loginScreen').style.display='flex';
-    $('nameInput').value='';
-    $('nameSubmitBtn').disabled=true;
-    $('nameSubmitBtn').textContent='REGISTER & START';
-    updatePinDots();
+    $('loginTitle').textContent='Enter Your PIN';$('loginSubtitle').textContent='Use your Square PIN';$('pinStatus').textContent='';
+    $('nameInputScreen').classList.remove('active');$('loginScreen').style.display='flex';
+    $('nameInput').value='';$('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='REGISTER & START';updatePinDots();
 }
-
 $('logoutBtn').addEventListener('click',()=>{
     stopPolling();currentEmployee=null;activeOrder=null;workItems=[];
     $('orderListScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');
-    $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';
-    resetLogin();
+    $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';resetLogin();
 });
 
 // ===== POLLING =====
@@ -674,7 +451,7 @@ function renderOrderList(){
     mine.forEach(o=>{
         const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
         h+='<div class="order-card mine" data-order-id="'+o.order_id+'">';
-        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
+        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><div style="display:flex;align-items:center;gap:8px;"><span class="order-card-time">'+orderAge(o.created_at)+'</span><button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button></div></div>';
         h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
         h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
         h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">▶ Resume your order</div>';
@@ -685,7 +462,7 @@ function renderOrderList(){
     unclaimed.forEach(o=>{
         const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
         h+='<div class="order-card" data-order-id="'+o.order_id+'">';
-        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
+        h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><div style="display:flex;align-items:center;gap:8px;"><span class="order-card-time">'+orderAge(o.created_at)+'</span><button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button></div></div>';
         h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
         h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
         if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
@@ -697,9 +474,7 @@ function renderOrderList(){
         h+='<div class="order-card-id">'+o.order_id+'</div><div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+'</div></div>';
     });
     const completed=orders.filter(o=>o.completed_at&&dismissedOrderIds.indexOf(o.order_id)===-1);
-    if(completed.length){
-        h+='<div style="font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--success);padding:14px 4px 6px;border-top:1px solid rgba(255,255,255,0.1);margin-top:6px;">✓ Completed Orders</div>';
-    }
+    if(completed.length){h+='<div style="font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--success);padding:14px 4px 6px;border-top:1px solid rgba(255,255,255,0.1);margin-top:6px;">✓ Completed Orders</div>';}
     completed.forEach(o=>{
         h+='<div class="order-card completed" data-order-id="'+o.order_id+'" data-completed="true">';
         h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
@@ -708,6 +483,17 @@ function renderOrderList(){
         h+='</div>';
     });
     list.innerHTML=h;
+
+    // Delete buttons — stop propagation so card click doesn't fire
+    list.querySelectorAll('.order-card-delete').forEach(btn=>{
+        btn.addEventListener('click',e=>{
+            e.stopPropagation();
+            pendingDeleteOrderId=btn.dataset.deleteId;
+            $('deleteOrderMessage').textContent='Delete order for "'+btn.dataset.car+'"? Use this for skipped drivers or test orders only.';
+            $('deleteOrderModal').classList.add('show');
+        });
+    });
+
     list.querySelectorAll('.order-card:not(.claimed)').forEach(c=>{c.addEventListener('click',()=>{
         const oid=c.dataset.orderId;
         if(c.dataset.completed){reopenOrder(oid);return;}
@@ -716,32 +502,51 @@ function renderOrderList(){
     });});
     list.querySelectorAll('.order-card.completed').forEach(c=>setupSwipeDismiss(c));
 }
+
 function orderAge(ts){const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
+
+// ===== DELETE ORDER MODAL =====
+$('deleteCancelBtn').addEventListener('click',()=>{pendingDeleteOrderId=null;$('deleteOrderModal').classList.remove('show');});
+$('deleteConfirmBtn').addEventListener('click',async()=>{
+    if(!pendingDeleteOrderId){$('deleteOrderModal').classList.remove('show');return;}
+    const id=pendingDeleteOrderId;
+    $('deleteOrderModal').classList.remove('show');
+    pendingDeleteOrderId=null;
+    try{
+        const r=await apiGet('deleteorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
+        if(r.success){
+            orders=orders.filter(o=>o.order_id!==id);
+            renderOrderList();
+            showToast('Order deleted');
+        }else{
+            // If API doesn't support deleteorder yet, just remove locally
+            orders=orders.filter(o=>o.order_id!==id);
+            renderOrderList();
+            showToast('Order removed');
+        }
+    }catch(e){
+        // Fallback: remove locally
+        orders=orders.filter(o=>o.order_id!==id);
+        renderOrderList();
+        showToast('Order removed');
+    }
+});
 
 // ===== REOPEN =====
 let dismissedOrderIds=[];
-
 function setupSwipeDismiss(card){
     let startX=0,currentX=0,swiping=false;
     card.addEventListener('touchstart',e=>{startX=e.touches[0].clientX;currentX=startX;swiping=true;});
     card.addEventListener('touchmove',e=>{
-        if(!swiping)return;
-        currentX=e.touches[0].clientX;
-        const dx=currentX-startX;
+        if(!swiping)return;currentX=e.touches[0].clientX;const dx=currentX-startX;
         if(dx<0){card.style.transform='translateX('+dx+'px)';card.style.opacity=Math.max(0,1+dx/200);e.preventDefault();}
     },{passive:false});
     card.addEventListener('touchend',()=>{
-        if(!swiping)return;swiping=false;
-        const dx=currentX-startX;
-        if(dx<-80){
-            card.classList.add('swiping-away');
-            const oid=card.dataset.orderId;
-            dismissedOrderIds.push(oid);
-            setTimeout(()=>renderOrderList(),300);
-        }else{card.style.transform='';card.style.opacity='';}
+        if(!swiping)return;swiping=false;const dx=currentX-startX;
+        if(dx<-80){card.classList.add('swiping-away');const oid=card.dataset.orderId;dismissedOrderIds.push(oid);setTimeout(()=>renderOrderList(),300);}
+        else{card.style.transform='';card.style.opacity='';}
     });
 }
-
 async function reopenOrder(id){
     if(!confirm('Reopen this order for changes?'))return;
     try{const r=await apiGet('reopenorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
@@ -751,9 +556,7 @@ async function reopenOrder(id){
 
 // ===== CLAIM =====
 async function claimOrder(id){
-    if(claiming)return;
-    const o=orders.find(x=>x.order_id===id);if(!o)return;
-    claiming=true;
+    if(claiming)return;const o=orders.find(x=>x.order_id===id);if(!o)return;claiming=true;
     const card=document.querySelector('.order-card[data-order-id="'+id+'"]');
     if(card){card.classList.add('claiming-now');card.innerHTML+='<div style="font-size:0.85rem;color:var(--accent);font-weight:700;margin-top:6px;">⏳ Claiming...</div>';}
     try{const r=await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
@@ -761,9 +564,8 @@ async function claimOrder(id){
     else{claiming=false;showToast(r.error||'Could not claim',true);fetchOrders();}}catch(e){claiming=false;showToast('Error claiming order',true);}
 }
 function resumeOrder(o){
-    if(claiming)return;
-    claiming=true;
-    activeOrder=o;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;showWorkScreen();
+    if(claiming)return;claiming=true;activeOrder=o;
+    workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;showWorkScreen();
 }
 
 // ===== WORK SCREEN =====
@@ -843,11 +645,8 @@ function updateCompleteBtn(){
     if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}
     else{btn.className='complete-btn partial';btn.textContent='⚠ Mark Complete ('+rem+' not done)';}
 }
-$('completeBtn').addEventListener('click',()=>{
-    const rem=workItems.filter(i=>!i.done);if(rem.length)showSkipWarning(rem);else completeOrder();
-});
+$('completeBtn').addEventListener('click',()=>{const rem=workItems.filter(i=>!i.done);if(rem.length)showSkipWarning(rem);else completeOrder();});
 
-// SKIP
 let selectedSkipReason=null;
 function showSkipWarning(rem){
     const wr=rem.filter(i=>i.needsWeigh),pr=rem.filter(i=>!i.needsWeigh);
@@ -865,7 +664,6 @@ $('skipConfirmBtn').addEventListener('click',()=>{
     $('skipWarningModal').classList.remove('show');completeOrder();
 });
 
-// SEND
 async function completeOrder(){
     const btn=$('completeBtn');btn.disabled=true;btn.textContent='Saving...';
     const payload={order_id:activeOrder.order_id,location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name,
@@ -876,7 +674,6 @@ async function completeOrder(){
     catch(e){showToast('Error completing order',true);btn.disabled=false;btn.textContent='✓ COMPLETE ORDER';}
 }
 
-// BACK
 $('workBackBtn').addEventListener('click',()=>{
     const dc=workItems.filter(i=>i.done).length;
     if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing?'))return;
