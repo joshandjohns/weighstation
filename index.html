@@ -534,7 +534,7 @@ $('deleteConfirmBtn').addEventListener('click',async()=>{
     renderOrderList();
     showToast('Order deleted');
     // Delete from the sheet on the server
-    try{await apiPost('deleteorder',{order_id:id});}catch(e){console.log('Server delete failed:',e);}
+    try{await apiGet('deleteorder',{order_id:id});}catch(e){console.log('Server delete failed:',e);}
 });
 
 // ===== REOPEN =====
