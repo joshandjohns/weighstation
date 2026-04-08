@@ -442,11 +442,12 @@ async function fetchOrders(){
 // ===== ORDER LIST =====
 function renderOrderList(){
     const list=$('orderList');
-    const unclaimed=orders.filter(o=>!o.claimed_by&&!o.completed_at);
-    const mine=orders.filter(o=>o.claimed_by&&!o.completed_at&&currentEmployee&&o.claimed_by===currentEmployee.name);
-    const others=orders.filter(o=>o.claimed_by&&!o.completed_at&&(!currentEmployee||o.claimed_by!==currentEmployee.name));
+    const visible=orders.filter(o=>deletedOrderIds.indexOf(o.order_id)===-1);
+    const unclaimed=visible.filter(o=>!o.claimed_by&&!o.completed_at);
+    const mine=visible.filter(o=>o.claimed_by&&!o.completed_at&&currentEmployee&&o.claimed_by===currentEmployee.name);
+    const others=visible.filter(o=>o.claimed_by&&!o.completed_at&&(!currentEmployee||o.claimed_by!==currentEmployee.name));
     $('orderCountBadge').textContent=unclaimed.length+mine.length;
-    if(!orders.length){list.innerHTML='<div class="no-orders"><div class="icon">📋</div><div class="msg">No pending orders</div></div>';return;}
+    if(!visible.length){list.innerHTML='<div class="no-orders"><div class="icon">📋</div><div class="msg">No pending orders</div></div>';return;}
     let h='';
     mine.forEach(o=>{
         const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
@@ -473,7 +474,7 @@ function renderOrderList(){
         h+='<div class="order-card claimed"><div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+'</div><div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+'</div></div>';
     });
-    const completed=orders.filter(o=>o.completed_at&&dismissedOrderIds.indexOf(o.order_id)===-1);
+    const completed=visible.filter(o=>o.completed_at&&dismissedOrderIds.indexOf(o.order_id)===-1);
     if(completed.length){h+='<div style="font-size:0.75rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--success);padding:14px 4px 6px;border-top:1px solid rgba(255,255,255,0.1);margin-top:6px;">✓ Completed Orders</div>';}
     completed.forEach(o=>{
         h+='<div class="order-card completed" data-order-id="'+o.order_id+'" data-completed="true">';
@@ -513,28 +514,18 @@ $('deleteConfirmBtn').addEventListener('click',async()=>{
     const id=pendingDeleteOrderId;
     $('deleteOrderModal').classList.remove('show');
     pendingDeleteOrderId=null;
-    try{
-        const r=await apiGet('deleteorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
-        if(r.success){
-            orders=orders.filter(o=>o.order_id!==id);
-            renderOrderList();
-            showToast('Order deleted');
-        }else{
-            // If API doesn't support deleteorder yet, just remove locally
-            orders=orders.filter(o=>o.order_id!==id);
-            renderOrderList();
-            showToast('Order removed');
-        }
-    }catch(e){
-        // Fallback: remove locally
-        orders=orders.filter(o=>o.order_id!==id);
-        renderOrderList();
-        showToast('Order removed');
-    }
+    // Track locally so polling doesn't bring it back
+    deletedOrderIds.push(id);
+    orders=orders.filter(o=>o.order_id!==id);
+    renderOrderList();
+    showToast('Order deleted');
+    // Best-effort server delete
+    try{await apiGet('deleteorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});}catch(e){}
 });
 
 // ===== REOPEN =====
 let dismissedOrderIds=[];
+let deletedOrderIds=[];
 function setupSwipeDismiss(card){
     let startX=0,currentX=0,swiping=false;
     card.addEventListener('touchstart',e=>{startX=e.touches[0].clientX;currentX=startX;swiping=true;});
