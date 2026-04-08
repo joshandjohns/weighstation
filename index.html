@@ -494,7 +494,8 @@ function renderOrderList(){
         });
     });
 
-    list.querySelectorAll('.order-card:not(.claimed)').forEach(c=>{c.addEventListener('click',()=>{
+    list.querySelectorAll('.order-card:not(.claimed)').forEach(c=>{c.addEventListener('click',(e)=>{
+        if(e.target.closest('.order-card-delete'))return;
         const oid=c.dataset.orderId;
         if(c.dataset.completed){reopenOrder(oid);return;}
         const o=orders.find(x=>x.order_id===oid);
