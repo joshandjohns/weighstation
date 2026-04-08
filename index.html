@@ -435,7 +435,12 @@ $('logoutBtn').addEventListener('click',()=>{
 function startPolling(){fetchOrders();pollTimer=setInterval(fetchOrders,POLL_INTERVAL);}
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 async function fetchOrders(){
-    try{orders=await apiGet('getpendingorders',{location:LOCATION});if(!activeOrder&&!claiming)renderOrderList();$('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();}
+    try{
+        const fresh=await apiGet('getpendingorders',{location:LOCATION});
+        orders=fresh.filter(o=>deletedOrderIds.indexOf(o.order_id)===-1);
+        if(!activeOrder&&!claiming)renderOrderList();
+        $('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();
+    }
     catch(e){$('pollStatus').textContent='Connection error - retrying...';}
 }
 
