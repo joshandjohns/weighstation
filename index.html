@@ -493,7 +493,7 @@ function renderOrderList(){
         h+='<div class="order-card completed" data-order-id="'+o.order_id+'" data-completed="true">';
         h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+'</div>';
-        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed</div>';
+        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed — tap to reopen · swipe to dismiss</div>';
         h+='</div>';
     });
     list.innerHTML=h;
@@ -508,15 +508,14 @@ function renderOrderList(){
     });
 
     // Card clicks — the delete button is NOT inside the card anymore
-    list.querySelectorAll('.order-card:not(.claimed)').forEach(c => {
+    list.querySelectorAll('.order-card:not(.claimed):not(.completed)').forEach(c => {
         c.addEventListener('click', () => {
             const oid = c.dataset.orderId;
-            if (c.dataset.completed) { reopenOrder(oid); return; }
             const o = orders.find(x => x.order_id === oid);
             if (o && o.claimed_by === currentEmployee.name) { resumeOrder(o); } else { claimOrder(oid); }
         });
     });
-    list.querySelectorAll('.order-card.completed').forEach(c=>setupSwipeDismiss(c));
+
 }
 
 function orderAge(ts){const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
@@ -534,31 +533,14 @@ $('deleteConfirmBtn').addEventListener('click',async()=>{
     renderOrderList();
     showToast('Order deleted');
     // Delete from the sheet on the server
-    try{const url=new URL(API_BASE);url.searchParams.set('action','deleteorder');url.searchParams.set('order_id',id);fetch(url.toString(),{redirect:'follow',mode:'no-cors'});}catch(e){console.log('Server delete failed:',e);}
+    try{await apiGet('deleteorder',{order_id:id});}catch(e){console.log('Server delete failed:',e);}
 });
 
 // ===== REOPEN =====
 let dismissedOrderIds=[];
 let deletedOrderIds=[];
-function setupSwipeDismiss(card){
-    let startX=0,currentX=0,swiping=false;
-    card.addEventListener('touchstart',e=>{startX=e.touches[0].clientX;currentX=startX;swiping=true;});
-    card.addEventListener('touchmove',e=>{
-        if(!swiping)return;currentX=e.touches[0].clientX;const dx=currentX-startX;
-        if(dx<0){card.style.transform='translateX('+dx+'px)';card.style.opacity=Math.max(0,1+dx/200);e.preventDefault();}
-    },{passive:false});
-    card.addEventListener('touchend',()=>{
-        if(!swiping)return;swiping=false;const dx=currentX-startX;
-        if(dx<-80){card.classList.add('swiping-away');const oid=card.dataset.orderId;dismissedOrderIds.push(oid);setTimeout(()=>renderOrderList(),300);}
-        else{card.style.transform='';card.style.opacity='';}
-    });
-}
-async function reopenOrder(id){
-    if(!confirm('Reopen this order for changes?'))return;
-    try{const r=await apiGet('reopenorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
-    if(r.success){const o=orders.find(x=>x.order_id===id);if(o){o.completed_at=null;o.claimed_by=currentEmployee.name;resumeOrder(o);}else{fetchOrders();}}
-    else{showToast(r.error||'Could not reopen',true);}}catch(e){showToast('Error reopening order',true);}
-}
+
+
 
 // ===== CLAIM =====
 async function claimOrder(id){
