@@ -493,7 +493,7 @@ function renderOrderList(){
         h+='<div class="order-card completed" data-order-id="'+o.order_id+'" data-completed="true">';
         h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
         h+='<div class="order-card-id">'+o.order_id+'</div>';
-        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed — tap to reopen · swipe to dismiss</div>';
+        h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed</div>';
         h+='</div>';
     });
     list.innerHTML=h;
