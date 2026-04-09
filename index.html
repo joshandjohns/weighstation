@@ -588,7 +588,20 @@ function showWorkScreen(){
     renderWorkItems();
 }
 function renderWorkItems(){
-    const wi=workItems.filter(i=>i.needsWeigh),pi=workItems.filter(i=>!i.needsWeigh);let h='';
+    // Group mods/toppings under their preceding parent item
+    const parents=[];
+    workItems.forEach(i=>{
+        if(i.isMod||i.isTopping||i.isSundaeTopping){
+            if(parents.length>0){
+                if(!parents[parents.length-1].mods)parents[parents.length-1].mods=[];
+                parents[parents.length-1].mods.push(i);
+            }
+        } else {
+            i.mods=[];
+            parents.push(i);
+        }
+    });
+    const wi=parents.filter(i=>i.needsWeigh),pi=parents.filter(i=>!i.needsWeigh);let h='';
     if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true);});}
     if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false);});}
     $('itemsScroll').innerHTML=h;
@@ -610,6 +623,7 @@ function renderWorkItem(item,isWeigh){
     if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
     if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
     if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
+    if(item.mods&&item.mods.length)item.mods.forEach(m=>{h+='<div class="work-item-note" style="color:var(--text-dim);">+ '+esc(m.name)+'</div>';});
     h+=wt+'</div>';return h;
 }
 
