@@ -732,9 +732,9 @@ async function completeOrder(){
     activeOrder=null;workItems=[];
     $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
     renderOrderList();
-    // Sync with server in background, then do a real fetch
-    try{await apiPost('completeorder',payload);fetchOrders();}
-    catch(e){console.log('Complete sync failed:',e);fetchOrders();}
+    // Sync with server silently — no re-render until polling picks it up naturally
+    try{await apiPost('completeorder',payload);}
+    catch(e){console.log('Complete sync failed:',e);}
 }
 
 $('workBackBtn').addEventListener('click',()=>{
