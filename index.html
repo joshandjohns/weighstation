@@ -98,6 +98,9 @@
         .work-back-btn{background:var(--surface-light);border:none;color:var(--text);padding:8px 14px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer}
         .work-meta{font-size:0.8rem;color:var(--text-dim);margin-top:4px}
         .work-notes{font-size:0.85rem;color:var(--warning);font-weight:600;margin-top:4px}
+        .work-order-type-badge{display:inline-block;padding:5px 12px;border-radius:20px;font-size:0.85rem;font-weight:800;margin-top:6px;letter-spacing:0.03em}
+        .work-order-type-badge.walkup{background:#0ea5e9;color:white}
+        .work-order-type-badge.drivethru{background:#f59e0b;color:#1a1a2e}
         .scale-bar{background:var(--surface);padding:8px 15px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,0.1)}
         .scale-weight{font-size:1.8rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:80px}
         .scale-weight .unit{font-size:0.9rem;color:var(--text-dim);font-weight:600}
@@ -117,6 +120,7 @@
         .work-item-top{display:flex;justify-content:space-between;align-items:center}
         .work-item-name{font-weight:800;font-size:1.25rem} .work-item-target{font-size:1rem;color:var(--text-dim);font-weight:700}
         .work-item-flavors{font-size:1.15rem;color:var(--text-dim);margin-top:4px;font-weight:600}
+        .work-item-mod{font-size:1rem;color:var(--text-dim);margin-top:2px;padding-left:12px;font-weight:500}
         .work-item-note{font-size:1rem;color:var(--warning);font-weight:700;margin-top:4px}
         .work-item-weight{font-size:1rem;font-weight:700;margin-top:6px}
         .work-item-weight.good{color:var(--success)} .work-item-weight.over{color:var(--danger)} .work-item-weight.under{color:var(--warning)}
@@ -215,6 +219,7 @@
             <div class="work-header-top"><span class="work-car" id="workCar"></span><button class="work-back-btn" id="workBackBtn">← Orders</button></div>
             <div class="work-meta" id="workMeta"></div>
             <div class="work-notes" id="workNotes"></div>
+            <div id="workOrderTypeBadge"></div>
         </div>
         <div class="scale-bar" id="scaleBar">
             <div class="scale-weight"><span id="currentWeight">0.0</span><span class="unit"> oz</span></div>
@@ -482,28 +487,40 @@ function renderOrderList(){
         let h='';
         mine.forEach(o=>{
             const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
+            const isWalkUp=o.order_type==='WALK-UP';
+            const typeBanner=isWalkUp
+                ?'<div style="background:#0ea5e9;color:white;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚶 WALK-UP — COUNTER</div>'
+                :'<div style="background:#f59e0b;color:#1a1a2e;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚗 DRIVE-THRU — WINDOW</div>';
             h+='<div class="order-card-wrap">';
-            h+='<div class="order-card mine" data-order-id="'+o.order_id+'">';
+            h+='<div class="order-card mine" style="padding-top:0;overflow:hidden;" data-order-id="'+o.order_id+'">';
+            h+=typeBanner;
+            h+='<div style="padding:14px 16px 0;">';
             h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
             h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
             h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
             h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">▶ Resume your order</div>';
             if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
             if(o.items.some(i=>i.allergyAlert))h+='<div class="order-card-allergy">⚠️🧤 ALLERGY ITEM IN ORDER 🧤⚠️</div>';
-            h+='</div>';
+            h+='</div></div>';
             h+='<button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button>';
             h+='</div>';
         });
         unclaimed.forEach(o=>{
             const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
+            const isWalkUp=o.order_type==='WALK-UP';
+            const typeBanner=isWalkUp
+                ?'<div style="background:#0ea5e9;color:white;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚶 WALK-UP — COUNTER</div>'
+                :'<div style="background:#f59e0b;color:#1a1a2e;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚗 DRIVE-THRU — WINDOW</div>';
             h+='<div class="order-card-wrap">';
-            h+='<div class="order-card" data-order-id="'+o.order_id+'">';
+            h+='<div class="order-card" style="padding-top:0;overflow:hidden;" data-order-id="'+o.order_id+'">';
+            h+=typeBanner;
+            h+='<div style="padding:14px 16px 0;">';
             h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
             h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
             h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
             if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
             if(o.items.some(i=>i.allergyAlert))h+='<div class="order-card-allergy">⚠️🧤 ALLERGY ITEM IN ORDER 🧤⚠️</div>';
-            h+='</div>';
+            h+='</div></div>';
             h+='<button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button>';
             h+='</div>';
         });
@@ -529,10 +546,8 @@ function renderOrderList(){
         });
 
     } else {
-        // COMPLETED TAB
         const completed=visible.filter(o=>o.completed_at);
         $('orderCountBadge').textContent=completed.length;
-
         if(!completed.length){
             list.innerHTML='<div class="no-orders"><div class="icon">📋</div><div class="msg">No completed orders</div></div>';
             return;
@@ -584,11 +599,21 @@ function showWorkScreen(){
     $('orderListScreen').classList.remove('active');$('orderWorkScreen').classList.add('active');
     $('workCar').textContent=activeOrder.car_name||'No Car';
     $('workMeta').textContent=activeOrder.order_id+(activeOrder.payment_type?' • '+activeOrder.payment_type:'');
-    $('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';$('workNotes').style.display=activeOrder.notes?'block':'none';
+    $('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';
+    $('workNotes').style.display=activeOrder.notes?'block':'none';
+
+    // Order type badge
+    const badgeEl=$('workOrderTypeBadge');
+    if(activeOrder.order_type==='WALK-UP'){
+        badgeEl.innerHTML='<span class="work-order-type-badge walkup">🚶 WALK-UP — COUNTER</span>';
+    } else {
+        badgeEl.innerHTML='<span class="work-order-type-badge drivethru">🚗 DRIVE-THRU — WINDOW</span>';
+    }
+
     renderWorkItems();
 }
+
 function renderWorkItems(){
-    // Group mods/toppings under their preceding parent item
     const parents=[];
     workItems.forEach(i=>{
         if(i.isMod||i.isTopping||i.isSundaeTopping){
@@ -608,6 +633,7 @@ function renderWorkItems(){
     $('itemsScroll').querySelectorAll('.work-item').forEach(el=>{el.addEventListener('click',()=>handleItemTap(parseInt(el.dataset.idx)));});
     updateCompleteBtn();
 }
+
 function renderWorkItem(item,isWeigh){
     const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';
     let wt='';
@@ -663,13 +689,19 @@ function weighFeedback(item,w){
 }
 
 // ===== COMPLETE =====
-function updateCompleteBtn(){const btn=$('completeBtn'),countable=workItems.filter(i=>!i.isMod&&!i.isTopping&&!i.isSundaeTopping),total=countable.length,done=countable.filter(i=>i.done).length,rem=total-done;
+function updateCompleteBtn(){
+    const btn=$('completeBtn');
+    const countable=workItems.filter(i=>!i.isMod&&!i.isTopping&&!i.isSundaeTopping);
+    const total=countable.length,done=countable.filter(i=>i.done).length,rem=total-done;
     if(!total){btn.disabled=true;btn.textContent='NO ITEMS';return;}
     btn.disabled=false;
     if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}
     else{btn.className='complete-btn partial';btn.textContent='⚠ Mark Complete ('+rem+' not done)';}
 }
-$('completeBtn').addEventListener('click',()=>{const rem=workItems.filter(i=>!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping);if(rem.length)showSkipWarning(rem);else completeOrder();});
+$('completeBtn').addEventListener('click',()=>{
+    const rem=workItems.filter(i=>!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping);
+    if(rem.length)showSkipWarning(rem);else completeOrder();
+});
 
 let selectedSkipReason=null;
 function showSkipWarning(rem){
