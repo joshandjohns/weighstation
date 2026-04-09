@@ -582,12 +582,13 @@ $('deleteConfirmBtn').addEventListener('click',async()=>{
 
 // ===== CLAIM =====
 async function claimOrder(id){
-    if(claiming)return;const o=orders.find(x=>x.order_id===id);if(!o)return;claiming=true;
-    const card=document.querySelector('.order-card[data-order-id="'+id+'"]');
-    if(card){card.classList.add('claiming-now');card.innerHTML+='<div style="font-size:0.85rem;color:var(--accent);font-weight:700;margin-top:6px;">⏳ Claiming...</div>';}
-    try{const r=await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});
-    if(r.success){activeOrder=o;activeOrder.claimed_by=currentEmployee.name;workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;showWorkScreen();}
-    else{claiming=false;showToast(r.error||'Could not claim',true);fetchOrders();}}catch(e){claiming=false;showToast('Error claiming order',true);}
+    if(claiming)return;const o=orders.find(x=>x.order_id===id);if(!o)return;claiming=false;
+    activeOrder=o;activeOrder.claimed_by=currentEmployee.name;
+    workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
+    showWorkScreen();
+    // Sync with server in background
+    try{await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});}
+    catch(e){console.log('Claim sync failed:',e);}
 }
 function resumeOrder(o){
     if(claiming)return;claiming=true;activeOrder=o;
@@ -721,13 +722,16 @@ $('skipConfirmBtn').addEventListener('click',()=>{
 });
 
 async function completeOrder(){
-    const btn=$('completeBtn');btn.disabled=true;btn.textContent='Saving...';
     const payload={order_id:activeOrder.order_id,location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name,
         items:workItems.map(i=>({item_name:i.name,sku:i.sku,flavors:i.flavors||'',needs_weigh:i.needsWeigh,target_oz:i.targetOz,weight_oz:i.weightOz,skipped:i.skipped||false,skip_reason:i.skipReason||null}))};
-    try{const r=await apiPost('completeorder',payload);
-        if(r.success){showToast('✓ Order complete!');activeOrder=null;workItems=[];$('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');fetchOrders();}
-        else{showToast('Error: '+(r.error||'Unknown'),true);btn.disabled=false;btn.textContent='✓ COMPLETE ORDER';}}
-    catch(e){showToast('Error completing order',true);btn.disabled=false;btn.textContent='✓ COMPLETE ORDER';}
+    // Optimistic — update UI immediately
+    showToast('✓ Order complete!');
+    activeOrder=null;workItems=[];
+    $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
+    fetchOrders();
+    // Sync with server in background
+    try{await apiPost('completeorder',payload);}
+    catch(e){console.log('Complete sync failed:',e);}
 }
 
 $('workBackBtn').addEventListener('click',()=>{
