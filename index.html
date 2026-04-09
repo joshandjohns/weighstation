@@ -623,7 +623,7 @@ function renderWorkItem(item,isWeigh){
     if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
     if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
     if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
-    if(item.mods&&item.mods.length)item.mods.forEach(m=>{h+='<div class="work-item-note" style="color:var(--text-dim);">+ '+esc(m.name)+'</div>';});
+    if(item.mods&&item.mods.length)item.mods.forEach(m=>{h+='<div class="work-item-mod">'+esc(m.name)+'</div>';});
     h+=wt+'</div>';return h;
 }
 
