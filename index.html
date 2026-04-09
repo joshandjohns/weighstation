@@ -669,7 +669,7 @@ function updateCompleteBtn(){const btn=$('completeBtn'),countable=workItems.filt
     if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}
     else{btn.className='complete-btn partial';btn.textContent='⚠ Mark Complete ('+rem+' not done)';}
 }
-$('completeBtn').addEventListener('click',()=>{const rem=workItems.filter(i=>!i.done);if(rem.length)showSkipWarning(rem);else completeOrder();});
+$('completeBtn').addEventListener('click',()=>{const rem=workItems.filter(i=>!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping);if(rem.length)showSkipWarning(rem);else completeOrder();});
 
 let selectedSkipReason=null;
 function showSkipWarning(rem){
