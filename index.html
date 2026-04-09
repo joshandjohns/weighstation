@@ -684,7 +684,7 @@ $('skipReasons').querySelectorAll('.skip-reason-btn').forEach(btn=>{
 });
 $('skipCancelBtn').addEventListener('click',()=>{$('skipWarningModal').classList.remove('show');});
 $('skipConfirmBtn').addEventListener('click',()=>{
-    workItems.forEach(i=>{if(!i.done){i.done=true;i.skipped=true;i.skipReason=selectedSkipReason;}});
+    workItems.forEach(i=>{if(!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping){i.done=true;i.skipped=true;i.skipReason=selectedSkipReason;}});
     $('skipWarningModal').classList.remove('show');completeOrder();
 });
 
