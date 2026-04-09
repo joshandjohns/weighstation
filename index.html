@@ -663,8 +663,7 @@ function weighFeedback(item,w){
 }
 
 // ===== COMPLETE =====
-function updateCompleteBtn(){
-    const btn=$('completeBtn'),total=workItems.length,done=workItems.filter(i=>i.done).length,rem=total-done;
+function updateCompleteBtn(){const btn=$('completeBtn'),countable=workItems.filter(i=>!i.isMod&&!i.isTopping&&!i.isSundaeTopping),total=countable.length,done=countable.filter(i=>i.done).length,rem=total-done;
     if(!total){btn.disabled=true;btn.textContent='NO ITEMS';return;}
     btn.disabled=false;
     if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}
