@@ -460,7 +460,13 @@ function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 async function fetchOrders(){
     try{
         const fresh=await apiGet('getpendingorders',{location:LOCATION});
-        orders=fresh.filter(o=>deletedOrderIds.indexOf(o.order_id)===-1);
+        const freshFiltered=fresh.filter(o=>deletedOrderIds.indexOf(o.order_id)===-1);
+        // Merge: keep any locally-completed orders that server hasn't caught up with yet
+        orders=freshFiltered.map(o=>{
+            const local=orders.find(l=>l.order_id===o.order_id);
+            if(local&&local.completed_at&&!o.completed_at)return local;
+            return o;
+        });
         if(!activeOrder&&!claiming)renderOrderList();
         $('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();
     }
@@ -732,7 +738,7 @@ async function completeOrder(){
     activeOrder=null;workItems=[];
     $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
     renderOrderList();
-    // Sync with server silently — no re-render until polling picks it up naturally
+    // Sync with server silently — merge in fetchOrders protects local state until server catches up
     try{await apiPost('completeorder',payload);}
     catch(e){console.log('Complete sync failed:',e);}
 }
