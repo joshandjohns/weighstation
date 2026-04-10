@@ -653,6 +653,8 @@ function renderWorkItem(item,isWeigh){
     if(item.done)h+='<span class="item-check">✓</span>';
     h+='</div>';
     if(item.flavors)h+='<div class="work-item-flavors">'+esc(item.flavors)+'</div>';
+if(item.sundaeToppings&&item.sundaeToppings.length)h+='<div class="work-item-flavors">'+esc(item.sundaeToppings.join(', '))+'</div>';
+if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';
     if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
     if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
     if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
