@@ -728,27 +728,39 @@ $('skipConfirmBtn').addEventListener('click',()=>{
 });
 
 async function completeOrder(){
+    const btn=$('completeBtn');
+    btn.disabled=true;
+    btn.textContent='Saving...';
+
     const payload={order_id:activeOrder.order_id,location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name,
         items:workItems.map(i=>({item_name:i.name,sku:i.sku,flavors:i.flavors||'',needs_weigh:i.needsWeigh,target_oz:i.targetOz,weight_oz:i.weightOz,skipped:i.skipped||false,skip_reason:i.skipReason||null}))};
-    // Optimistic — mark complete in local array immediately
-    const completedId=activeOrder.order_id;
-    const now=new Date().toISOString();
-    orders=orders.map(o=>o.order_id===completedId?{...o,completed_at:now,claimed_by:currentEmployee.name}:o);
-    showToast('✓ Order complete!');
-    activeOrder=null;workItems=[];
-    $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
-    renderOrderList();
-    // Sync with server silently — merge in fetchOrders protects local state until server catches up
-    try{await apiPost('completeorder',payload);}
-    catch(e){console.log('Complete sync failed:',e);}
-}
 
+    try{
+        const result=await apiPost('completeorder',payload);
+        if(result.success===false){
+            showToast(result.error||'Could not complete order',true);
+            btn.disabled=false;
+            updateCompleteBtn();
+            return;
+        }
+        const completedId=activeOrder.order_id;
+        const now=new Date().toISOString();
+        orders=orders.map(o=>o.order_id===completedId?{...o,completed_at:now,claimed_by:currentEmployee.name}:o);
+        showToast('✓ Order complete!');
+        activeOrder=null;workItems=[];
+        $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
+        renderOrderList();
+    }catch(e){
+        showToast('Connection error — try again',true);
+        btn.disabled=false;
+        updateCompleteBtn();
+    }
+}
 $('workBackBtn').addEventListener('click',()=>{
     const dc=workItems.filter(i=>i.done).length;
     if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing?'))return;
     activeOrder=null;workItems=[];$('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');renderOrderList();
 });
-
 // INIT
 if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
 </script>
