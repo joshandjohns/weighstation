@@ -618,7 +618,8 @@ function renderOrderList(){
             h+='<div class="order-card completed">';
             h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
             h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
-            h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed</div>';
+            const makeTime = o.claimed_at && o.completed_at ? formatMakeTime(o.claimed_at, o.completed_at) : null;
+            h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed'+(makeTime?' — ⏱ '+makeTime:'')+'</div>';
             h+='</div>';
         });
         list.innerHTML=h;
