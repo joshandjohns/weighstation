@@ -108,6 +108,9 @@
         .scale-connect-btn{background:var(--accent);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer}
         .scale-reconnect-btn{background:var(--danger);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer;animation:staleFlash 1.5s infinite}
 
+        /* MAKE TIMER */
+        .make-timer{font-size:1.4rem;font-weight:900;letter-spacing:1px;font-variant-numeric:tabular-nums;padding:4px 10px;border-radius:8px;background:rgba(0,0,0,0.2)}
+
         /* ITEMS GRID */
         .items-scroll{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
         .section-label{grid-column:1 / -1;font-size:0.95rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px;display:flex;align-items:center;gap:8px}
@@ -216,7 +219,13 @@
     <!-- ORDER WORK -->
     <div class="order-work-screen" id="orderWorkScreen">
         <div class="work-header">
-            <div class="work-header-top"><span class="work-car" id="workCar"></span><button class="work-back-btn" id="workBackBtn">← Orders</button></div>
+            <div class="work-header-top">
+                <span class="work-car" id="workCar"></span>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="make-timer" id="makeTimer" style="display:none;"></span>
+                    <button class="work-back-btn" id="workBackBtn">← Orders</button>
+                </div>
+            </div>
             <div class="work-meta" id="workMeta"></div>
             <div class="work-notes" id="workNotes"></div>
             <div id="workOrderTypeBadge"></div>
@@ -282,6 +291,9 @@ let scaleState='disconnected',lastDataReceived=0,scaleWatchdogTimer=null,scaleVe
 let pendingDeleteOrderId=null;
 let activeTab='pending';
 let deletedOrderIds=[];
+let makeTimerInterval=null;
+let orderClaimedAt=null;
+let orderCompletedAt=null;
 
 const $=id=>document.getElementById(id);
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
@@ -289,6 +301,50 @@ function showToast(msg,err=false){const t=$('toast');t.textContent=msg;t.classNa
 
 async function apiGet(action,params={}){const url=new URL(API_BASE);url.searchParams.set('action',action);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));const r=await fetch(url.toString(),{redirect:'follow'});return r.json();}
 async function apiPost(action,body){const r=await fetch(API_BASE+'?action='+action,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),redirect:'follow'});return r.json();}
+
+// ===== MAKE TIMER =====
+function formatMakeTime(claimedAt, completedAt) {
+    if (!claimedAt) return '';
+    const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+    const s = Math.floor((end - new Date(claimedAt).getTime()) / 1000);
+    if (s < 0) return '0:00';
+    return Math.floor(s / 60) + ':' + (s % 60).toString().padStart(2, '0');
+}
+
+function getMakeTimeColor(claimedAt, completedAt) {
+    if (!claimedAt) return 'var(--success)';
+    if (completedAt) return 'var(--text-dim)';
+    const s = Math.floor((Date.now() - new Date(claimedAt).getTime()) / 1000);
+    if (s >= 300) return '#ef4444';
+    if (s >= 180) return '#f59e0b';
+    return 'var(--success)';
+}
+
+function startMakeTimer(claimedAt) {
+    stopMakeTimer();
+    orderClaimedAt = claimedAt;
+    orderCompletedAt = null;
+    const timerEl = $('makeTimer');
+    timerEl.style.display = 'inline-block';
+    function update() {
+        timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt);
+        timerEl.style.color = getMakeTimeColor(orderClaimedAt, orderCompletedAt);
+    }
+    update();
+    makeTimerInterval = setInterval(update, 1000);
+}
+
+function stopMakeTimer(completedAt) {
+    if (makeTimerInterval) { clearInterval(makeTimerInterval); makeTimerInterval = null; }
+    if (completedAt) {
+        orderCompletedAt = completedAt;
+        const timerEl = $('makeTimer');
+        if (timerEl) {
+            timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt);
+            timerEl.style.color = 'var(--text-dim)';
+        }
+    }
+}
 
 // ===== SCALE STATE MACHINE =====
 function setScaleState(newState){
@@ -441,7 +497,7 @@ function resetLogin(){
     $('nameInput').value='';$('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='REGISTER & START';updatePinDots();
 }
 $('logoutBtn').addEventListener('click',()=>{
-    stopPolling();currentEmployee=null;activeOrder=null;workItems=[];
+    stopPolling();stopMakeTimer();currentEmployee=null;activeOrder=null;workItems=[];
     $('orderListScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');
     $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';resetLogin();
 });
@@ -461,7 +517,6 @@ async function fetchOrders(){
     try{
         const fresh=await apiGet('getpendingorders',{location:LOCATION});
         const freshFiltered=fresh.filter(o=>deletedOrderIds.indexOf(o.order_id)===-1);
-        // Merge: keep any locally-completed orders that server hasn't caught up with yet
         orders=freshFiltered.map(o=>{
             const local=orders.find(l=>l.order_id===o.order_id);
             if(local&&local.completed_at&&!o.completed_at)return local;
@@ -589,16 +644,19 @@ $('deleteConfirmBtn').addEventListener('click',async()=>{
 // ===== CLAIM =====
 async function claimOrder(id){
     if(claiming)return;const o=orders.find(x=>x.order_id===id);if(!o)return;claiming=false;
-    activeOrder=o;activeOrder.claimed_by=currentEmployee.name;
+    const now = new Date().toISOString();
+    activeOrder=o;activeOrder.claimed_by=currentEmployee.name;activeOrder.claimed_at=now;
     workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
     showWorkScreen();
-    // Sync with server in background
+    startMakeTimer(now);
     try{await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});}
     catch(e){console.log('Claim sync failed:',e);}
 }
 function resumeOrder(o){
     if(claiming)return;claiming=true;activeOrder=o;
-    workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;showWorkScreen();
+    workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;
+    showWorkScreen();
+    startMakeTimer(o.claimed_at || new Date().toISOString());
 }
 
 // ===== WORK SCREEN =====
@@ -609,7 +667,6 @@ function showWorkScreen(){
     $('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';
     $('workNotes').style.display=activeOrder.notes?'block':'none';
 
-    // Order type badge
     const badgeEl=$('workOrderTypeBadge');
     if(activeOrder.order_type==='WALK-UP'){
         badgeEl.innerHTML='<span class="work-order-type-badge walkup">🚶 WALK-UP — COUNTER</span>';
@@ -653,8 +710,8 @@ function renderWorkItem(item,isWeigh){
     if(item.done)h+='<span class="item-check">✓</span>';
     h+='</div>';
     if(item.flavors)h+='<div class="work-item-flavors">'+esc(item.flavors)+'</div>';
-if(item.sundaeToppingNote)h+='<div class="work-item-flavors" style="color:#f59e0b;">'+esc(item.sundaeToppingNote)+'</div>';
-if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';
+    if(item.sundaeToppingNote)h+='<div class="work-item-flavors" style="color:#f59e0b;">'+esc(item.sundaeToppingNote)+'</div>';
+    if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';
     if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
     if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
     if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
@@ -747,9 +804,11 @@ async function completeOrder(){
         }
         const completedId=activeOrder.order_id;
         const now=new Date().toISOString();
+        stopMakeTimer(now);
         orders=orders.map(o=>o.order_id===completedId?{...o,completed_at:now,claimed_by:currentEmployee.name}:o);
         showToast('✓ Order complete!');
         activeOrder=null;workItems=[];
+        $('makeTimer').style.display='none';
         $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
         renderOrderList();
     }catch(e){
@@ -761,7 +820,11 @@ async function completeOrder(){
 $('workBackBtn').addEventListener('click',()=>{
     const dc=workItems.filter(i=>i.done).length;
     if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing?'))return;
-    activeOrder=null;workItems=[];$('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');renderOrderList();
+    stopMakeTimer();
+    activeOrder=null;workItems=[];
+    $('makeTimer').style.display='none';
+    $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
+    renderOrderList();
 });
 // INIT
 if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
