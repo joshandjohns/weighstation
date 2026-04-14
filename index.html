@@ -466,7 +466,7 @@ async function handlePinComplete(){
     try{
         const result=await apiGet('pinlookup',{pin:pinEntry});
         if(result.found){loginEmployee(result);}
-        else{$('pinStatus').textContent='PIN not found — please register on the order tablet';showPinError();}
+        else{$('pinStatus').textContent='Incorrect PIN — try again. New users must register on the order tablet first.';showPinError();}
     }
     catch(e){$('pinStatus').textContent='Connection error';showPinError();}
 }
