@@ -462,16 +462,13 @@ $('pinPad').addEventListener('click',e=>{
 function updatePinDots(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot'+(i<pinEntry.length?' filled':'');}
 function showPinError(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot error';setTimeout(()=>{pinEntry='';updatePinDots();},600);}
 async function handlePinComplete(){
-    if(pinMode==='login'){
-        $('pinStatus').textContent='Checking...';
-        try{const result=await apiGet('pinlookup',{pin:pinEntry});
+    $('pinStatus').textContent='Checking...';
+    try{
+        const result=await apiGet('pinlookup',{pin:pinEntry});
         if(result.found){loginEmployee(result);}
-        else{pendingPin=pinEntry;pinEntry='';pinMode='confirm';$('loginTitle').textContent='Confirm Your PIN';$('loginSubtitle').textContent='Enter the same 4 digits again';$('pinStatus').textContent='';updatePinDots();}}
-        catch(e){$('pinStatus').textContent='Connection error';showPinError();}
-    }else if(pinMode==='confirm'){
-        if(pinEntry===pendingPin){pinMode='register';$('loginScreen').style.display='none';$('nameInputScreen').classList.add('active');$('nameInput').focus();}
-        else{$('pinStatus').textContent="PINs don't match — try again";showPinError();pinMode='login';pendingPin='';$('loginTitle').textContent='Enter Your PIN';$('loginSubtitle').textContent='Use your Square PIN';}
+        else{$('pinStatus').textContent='PIN not found — please register on the order tablet';showPinError();}
     }
+    catch(e){$('pinStatus').textContent='Connection error';showPinError();}
 }
 $('nameInput').addEventListener('input',()=>{$('nameSubmitBtn').disabled=$('nameInput').value.trim().length<2;});
 $('nameInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('nameSubmitBtn').disabled)registerEmployee();});
