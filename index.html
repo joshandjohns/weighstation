@@ -65,6 +65,8 @@
         .order-card{background:var(--surface);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all 0.15s;border:2px solid transparent}
         .order-card:active{transform:scale(0.98)}
         .order-card.claimed{border-color:var(--warning);opacity:0.6;pointer-events:none}
+        .order-card.claimed-override{border-color:var(--warning);opacity:0.85;cursor:pointer}
+        .order-card.claimed-override:active{transform:scale(0.98)}
         .order-card.mine{border-color:var(--success)}
         .order-card.claiming-now{border-color:var(--accent);opacity:0.5;pointer-events:none}
         .order-card.completed{border-color:rgba(74,222,128,0.4);opacity:0.8;background:rgba(74,222,128,0.06)}
@@ -285,6 +287,9 @@ const TOLERANCE=0.5;
 const SCALE_VERIFY_TIMEOUT=3000;
 const SCALE_DATA_TIMEOUT=10000;
 const SCALE_WATCHDOG_INTERVAL=2000;
+// Employees allowed to take over orders claimed by someone else
+// John Krakauer, Brian Ortiz, Drake Wyman, Olivia Chavarria, Micah Molascon, Caymen Hook
+const OVERRIDE_EMPLOYEES=['EMP-1224','EMP-2309','EMP-7112','EMP-6982','EMP-4372','EMP-3667'];
 
 let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null,claiming=false;
 let scaleState='disconnected',lastDataReceived=0,scaleWatchdogTimer=null,scaleVerifyTimer=null,scaleReconnecting=false;
@@ -583,8 +588,12 @@ function renderOrderList(){
             h+='</div>';
         });
         others.forEach(o=>{
-            h+='<div class="order-card claimed"><div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
-            h+='<div class="order-card-id">'+o.order_id+'</div><div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+'</div></div>';
+            const canOverride=currentEmployee&&OVERRIDE_EMPLOYEES.indexOf(currentEmployee.id)!==-1;
+            const cardClass=canOverride?'order-card claimed-override':'order-card claimed';
+            const dataAttrs=canOverride?' data-order-id="'+o.order_id+'" data-override="1"':'';
+            h+='<div class="'+cardClass+'"'+dataAttrs+'><div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
+            h+='<div class="order-card-id">'+o.order_id+'</div>';
+            h+='<div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+(canOverride?' — tap to take over':'')+'</div></div>';
         });
         list.innerHTML=h;
 
@@ -595,11 +604,20 @@ function renderOrderList(){
                 $('deleteOrderModal').classList.add('show');
             });
         });
-        list.querySelectorAll('.order-card:not(.claimed)').forEach(c=>{
+        list.querySelectorAll('.order-card[data-order-id]').forEach(c=>{
             c.addEventListener('click',()=>{
                 const oid=c.dataset.orderId;
+                const isOverride=c.dataset.override==='1';
                 const o=orders.find(x=>x.order_id===oid);
-                if(o&&o.claimed_by===currentEmployee.name){resumeOrder(o);}else{claimOrder(oid);}
+                if(!o)return;
+                if(isOverride){
+                    if(!confirm('This order is claimed by '+o.claimed_by+'. Take it over?'))return;
+                    claimOrder(oid);
+                }else if(o.claimed_by===currentEmployee.name){
+                    resumeOrder(o);
+                }else{
+                    claimOrder(oid);
+                }
             });
         });
 
