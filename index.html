@@ -122,6 +122,13 @@
         .work-item.weigh-item{border-left-color:var(--weigh-color);background:rgba(59,130,246,0.12);border:2px solid rgba(59,130,246,0.3);border-left:5px solid var(--weigh-color)}
         .work-item.prep-item{border-left-color:var(--prep-color);background:rgba(139,92,246,0.08);border:2px solid rgba(139,92,246,0.2);border-left:5px solid var(--prep-color)}
         .work-item.done{opacity:0.5;background:rgba(74,222,128,0.1);border-color:rgba(74,222,128,0.2);border-left-color:var(--success)}
+        .work-item.priority{border:2px solid #f59e0b !important;border-left:5px solid #f59e0b !important;background:rgba(245,158,11,0.15) !important;box-shadow:0 0 0 2px rgba(245,158,11,0.25);animation:priorityPulse 2s infinite}
+        .work-item.priority.done{animation:none;box-shadow:none;opacity:0.5}
+        .work-item.locked{opacity:0.4;cursor:not-allowed}
+        .work-item.locked:active{transform:none}
+        .priority-badge{display:inline-block;background:#f59e0b;color:#1a1a2e;font-size:0.7rem;font-weight:900;padding:2px 8px;border-radius:6px;letter-spacing:0.05em;margin-left:6px;vertical-align:middle}
+        .locked-hint{font-size:0.85rem;color:#f59e0b;font-weight:700;margin-top:6px}
+        @keyframes priorityPulse{0%,100%{box-shadow:0 0 0 2px rgba(245,158,11,0.25)}50%{box-shadow:0 0 0 4px rgba(245,158,11,0.5)}}
         .work-item-top{display:flex;justify-content:space-between;align-items:center}
         .work-item-name{font-weight:800;font-size:1.25rem} .work-item-target{font-size:1rem;color:var(--text-dim);font-weight:700}
         .work-item-flavors{font-size:1.15rem;color:var(--text-dim);margin-top:4px;font-weight:600}
@@ -290,6 +297,28 @@ const SCALE_WATCHDOG_INTERVAL=2000;
 // Employees allowed to take over orders claimed by someone else
 // John Krakauer, Brian Ortiz, Drake Wyman, Olivia Chavarria, Micah Molascon, Caymen Hook
 const OVERRIDE_EMPLOYEES=['EMP-1224','EMP-2309','EMP-7112','EMP-6982','EMP-4372','EMP-3667'];
+
+// Priority items — sundaes, shakes (all variants), and banana splits are
+// the most time-sensitive and complex to make. They must be completed
+// before any other items in the same order. Rationale: shakes separate,
+// sundae toppings compromise fast (whipped melts, fudge cools), splits
+// require station prep. Finishing cones/scoops first means the rest of
+// the order is waiting while the complex items are still being built.
+const PRIORITY_SKUS = [
+    // Sundaes & splits
+    'RGSUNDAE','LGSUN','BANSPL',
+    // Regular shakes
+    'SMSHAKE','RGSHAKE','KIDSSHAKE',
+    // Specialty shakes (both sizes)
+    'BOMBCYC','BOMBCYC-RG',
+    'SNOWDRFT','SNOWDRFT-RG',
+    'POLARVX','POLARVX-RG',
+    'FRSTBITE','FRSTBITE-RG',
+    'AVALNCH','AVALNCH-RG'
+];
+function isPriorityItem(item) {
+    return item && item.sku && PRIORITY_SKUS.indexOf(String(item.sku).toUpperCase()) !== -1;
+}
 
 let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null,claiming=false;
 let scaleState='disconnected',lastDataReceived=0,scaleWatchdogTimer=null,scaleVerifyTimer=null,scaleReconnecting=false;
@@ -706,22 +735,41 @@ function renderWorkItems(){
             parents.push(i);
         }
     });
-    const wi=parents.filter(i=>i.needsWeigh),pi=parents.filter(i=>!i.needsWeigh);let h='';
-    if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true);});}
-    if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false);});}
+    // Priority items (shakes/sundaes/splits) go to the top of their section
+    // and lock the rest of the order until done.
+    const priorityPending = parents.some(i => isPriorityItem(i) && !i.done);
+    const sortFn = (a,b) => {
+        const ap = isPriorityItem(a) ? 0 : 1;
+        const bp = isPriorityItem(b) ? 0 : 1;
+        return ap - bp;
+    };
+    const wi=parents.filter(i=>i.needsWeigh).sort(sortFn);
+    const pi=parents.filter(i=>!i.needsWeigh).sort(sortFn);
+    let h='';
+    if(priorityPending){
+        h+='<div style="grid-column:1 / -1;background:rgba(245,158,11,0.15);border:2px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:4px;color:#f59e0b;font-weight:700;font-size:0.9rem;text-align:center;">⚡ Make the highlighted items first — other items are locked until they are done</div>';
+    }
+    if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true,priorityPending);});}
+    if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false,priorityPending);});}
     $('itemsScroll').innerHTML=h;
     $('itemsScroll').querySelectorAll('.work-item').forEach(el=>{el.addEventListener('click',()=>handleItemTap(parseInt(el.dataset.idx)));});
     updateCompleteBtn();
 }
 
-function renderWorkItem(item,isWeigh){
+function renderWorkItem(item,isWeigh,priorityPending){
     const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';
+    const isPriority = isPriorityItem(item);
+    const priorityClass = isPriority ? ' priority' : '';
+    // Lock non-priority items when there's a pending priority item
+    const lockedClass = (priorityPending && !isPriority && !item.done) ? ' locked' : '';
     let wt='';
     if(item.done&&item.weightOz!==null){const d=item.weightOz-item.targetOz;let wc='good';if(Math.abs(d)>TOLERANCE)wc=d>0?'over':'under';wt='<div class="work-item-weight '+wc+'">✓ '+item.weightOz.toFixed(1)+' oz</div>';}
     else if(item.done&&item.skipped){wt='<div class="work-item-weight under">⚠ Not weighed'+(item.skipReason?' - '+item.skipReason:'')+'</div>';}
     else if(item.done){wt='<div class="work-item-weight good">✓ Done</div>';}
-    let h='<div class="work-item '+tc+dc+'" data-idx="'+item.idx+'"><div class="work-item-top">';
-    h+='<span class="work-item-name"><span class="item-type-icon">'+ic+'</span> '+esc(item.name)+'</span>';
+    let h='<div class="work-item '+tc+dc+priorityClass+lockedClass+'" data-idx="'+item.idx+'"><div class="work-item-top">';
+    h+='<span class="work-item-name"><span class="item-type-icon">'+ic+'</span> '+esc(item.name);
+    if(isPriority&&!item.done)h+='<span class="priority-badge">⚡ MAKE FIRST</span>';
+    h+='</span>';
     if(isWeigh&&item.targetOz)h+='<span class="work-item-target">Target: '+item.targetOz+' oz</span>';
     if(item.done)h+='<span class="item-check">✓</span>';
     h+='</div>';
@@ -732,12 +780,25 @@ function renderWorkItem(item,isWeigh){
     if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
     if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
     if(item.mods&&item.mods.length)item.mods.forEach(m=>{h+='<div class="work-item-mod">'+esc(m.name)+'</div>';});
+    if(lockedClass)h+='<div class="locked-hint">🔒 Locked until shake/sundae/split is done</div>';
     h+=wt+'</div>';return h;
 }
 
 // ===== ITEM TAP =====
 function handleItemTap(idx){
     const item=workItems[idx];if(!item)return;
+    // Block completion of non-priority items while shakes/sundaes/splits
+    // are still pending. Un-checking a completed item is still allowed.
+    if(!item.done && !isPriorityItem(item)){
+        const priorityPending = workItems.some(i =>
+            !i.isMod && !i.isTopping && !i.isSundaeTopping &&
+            isPriorityItem(i) && !i.done
+        );
+        if(priorityPending){
+            showToast('Finish shakes/sundaes/splits first',true);
+            return;
+        }
+    }
     if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;renderWorkItems();return;}
     if(item.needsWeigh){
         if(scaleState!=='live'){item.done=true;item.skipped=true;item.skipReason='Scale not connected';renderWorkItems();showToast('✓ '+item.name+' marked done (no scale)');return;}
