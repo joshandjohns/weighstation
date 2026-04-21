@@ -49,12 +49,33 @@
         .scale-connect-btn-login{background:var(--surface-light);border:2px solid var(--accent);color:var(--text);padding:10px 20px;border-radius:12px;font-size:0.9rem;font-weight:600;cursor:pointer}
         .scale-connect-btn-login:disabled{opacity:0.5}
 
-        /* ORDER LIST */
-        .order-list-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
-        .order-list-screen.active{display:flex}
-        .order-list-header{padding:10px 15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0}
-        .order-list-header h2{font-size:1.1rem}
-        .count-badge{background:var(--accent);color:white;padding:4px 12px;border-radius:20px;font-size:0.85rem;font-weight:700}
+        /* QUEUE BANNER — sits above claim-next screen or work screen */
+        .queue-banner{padding:10px 14px;font-weight:800;font-size:0.95rem;text-align:center;letter-spacing:0.02em;flex-shrink:0;display:none}
+        .queue-banner.show{display:block}
+        .queue-banner.calm{background:rgba(155,89,182,0.2);color:#d4b3e8;border-bottom:2px solid var(--accent)}
+        .queue-banner.warn{background:rgba(245,158,11,0.2);color:#fbbf24;border-bottom:2px solid var(--warning)}
+        .queue-banner.alert{background:rgba(239,68,68,0.25);color:#fca5a5;border-bottom:2px solid var(--danger);animation:bannerPulse 1.2s infinite;font-size:1.05rem}
+        @keyframes bannerPulse{0%,100%{opacity:1}50%{opacity:0.6}}
+        .queue-banner-age{font-size:0.8rem;font-weight:600;opacity:0.85;margin-top:2px}
+
+        /* CLAIM NEXT SCREEN */
+        .claim-next-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
+        .claim-next-screen.active{display:flex}
+        .claim-next-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:24px}
+        .claim-next-empty{color:var(--text-dim);font-size:1.05rem;text-align:center;line-height:1.5;max-width:360px}
+        .claim-next-empty .big-icon{font-size:3.5rem;margin-bottom:8px}
+        .claim-next-btn{width:100%;max-width:380px;padding:28px;border-radius:18px;border:none;background:var(--accent);color:#fff;font-size:1.5rem;font-weight:900;cursor:pointer;font-family:inherit;letter-spacing:0.05em;box-shadow:0 6px 20px rgba(155,89,182,0.35);transition:transform 0.1s}
+        .claim-next-btn:active{transform:scale(0.97)}
+        .claim-next-btn:disabled{opacity:0.5;cursor:not-allowed;background:var(--surface-light);box-shadow:none}
+        .claim-next-msg{font-size:0.9rem;color:var(--warning);text-align:center;min-height:20px;max-width:360px;font-weight:600}
+        .override-link{font-size:0.85rem;color:var(--text-dim);text-decoration:underline;cursor:pointer;padding:8px;margin-top:20px}
+        .override-link:active{color:var(--text)}
+
+        /* OVERRIDE MODAL */
+        .override-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 20px;max-height:300px;overflow-y:auto}
+        .override-order-btn{padding:14px;border-radius:10px;border:2px solid var(--surface-light);background:var(--bg);color:var(--text);font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;text-align:left}
+        .override-order-btn:active{border-color:var(--accent)}
+        .override-empty{color:var(--text-dim);padding:20px;text-align:center;font-size:0.9rem}
 
         /* TABS */
         .tab-bar{display:flex;background:var(--surface);border-bottom:2px solid rgba(255,255,255,0.08);flex-shrink:0}
@@ -64,32 +85,15 @@
         .order-list{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
         .order-card{background:var(--surface);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all 0.15s;border:2px solid transparent}
         .order-card:active{transform:scale(0.98)}
-        .order-card.claimed{border-color:var(--warning);opacity:0.6;pointer-events:none}
-        .order-card.claimed-override{border-color:var(--warning);opacity:0.85;cursor:pointer}
-        .order-card.claimed-override:active{transform:scale(0.98)}
-        .order-card.mine{border-color:var(--success)}
-        .order-card.claiming-now{border-color:var(--accent);opacity:0.5;pointer-events:none}
         .order-card.completed{border-color:rgba(74,222,128,0.4);opacity:0.8;background:rgba(74,222,128,0.06)}
         .order-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
         .order-card-car{font-weight:800;font-size:1.1rem}
         .order-card-time{font-size:0.8rem;color:var(--text-dim)}
-        .order-card-items{font-size:0.85rem;color:var(--text-dim);display:flex;gap:12px;flex-wrap:wrap;margin-top:4px}
-        .order-card-items .weigh-count{color:var(--weigh-color);font-weight:600}
-        .order-card-items .prep-count{color:var(--prep-color);font-weight:600}
-        .order-card-claimed{font-size:0.8rem;color:var(--warning);font-weight:600;margin-top:4px}
-        .order-card-notes{font-size:0.8rem;color:var(--warning);margin-top:4px;font-weight:600}
-        .order-card-allergy{background:#dc2626;color:white;padding:8px 12px;border-radius:8px;margin-top:6px;font-weight:900;font-size:0.9rem;text-align:center;letter-spacing:0.5px;animation:allergyPulse 1.5s infinite}
         .work-item-allergy{background:#dc2626;color:white;padding:8px 12px;border-radius:8px;margin-top:6px;font-weight:900;font-size:1.05rem;letter-spacing:0.5px;animation:allergyPulse 1.5s infinite}
         @keyframes allergyPulse{0%,100%{opacity:1}50%{opacity:0.7}}
         .no-orders{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);gap:10px}
         .no-orders .icon{font-size:3rem} .no-orders .msg{font-size:1.1rem}
         .poll-status{font-size:0.75rem;color:var(--text-dim);text-align:center;padding:8px;flex-shrink:0}
-
-        /* DELETE BUTTON */
-        .order-card-wrap{position:relative;display:flex;align-items:stretch;gap:6px}
-        .order-card-wrap .order-card{flex:1;min-width:0}
-        .order-card-delete{background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.4);color:#ef4444;width:44px;border-radius:12px;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.15s;padding:0}
-        .order-card-delete:hover{background:rgba(239,68,68,0.35)}
 
         /* ORDER WORK */
         .order-work-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
@@ -211,28 +215,40 @@
         <button class="name-submit-btn" id="nameSubmitBtn" disabled>REGISTER & START</button>
     </div>
 
-    <!-- ORDER LIST -->
-    <div class="order-list-screen" id="orderListScreen">
-        <div class="order-list-header">
-            <h2>Orders</h2>
-            <span class="count-badge" id="orderCountBadge">0</span>
-        </div>
+    <!-- CLAIM NEXT SCREEN (replaces the old order list for non-override claims) -->
+    <div class="claim-next-screen" id="claimNextScreen">
+        <div class="queue-banner" id="queueBannerClaim"></div>
         <div class="tab-bar">
-            <button class="tab-btn active" id="tabPending" onclick="switchTab('pending')">⚖️ Pending</button>
+            <button class="tab-btn active" id="tabClaimNext" onclick="switchTab('claimNext')">⚡ Next Order</button>
             <button class="tab-btn" id="tabCompleted" onclick="switchTab('completed')">✓ Completed</button>
         </div>
-        <div class="order-list" id="orderList"></div>
+        <div id="claimNextContent" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+            <div class="claim-next-body">
+                <div class="claim-next-empty" id="claimNextEmpty" style="display:none;">
+                    <div class="big-icon">🎉</div>
+                    <div>No orders in queue</div>
+                    <div style="font-size:0.85rem;margin-top:4px;opacity:0.7;">Waiting for the next one...</div>
+                </div>
+                <button class="claim-next-btn" id="claimNextBtn">⚡ Claim Next Order</button>
+                <div class="claim-next-msg" id="claimNextMsg"></div>
+                <div class="override-link" id="overrideLink" style="display:none;" onclick="openOverrideModal()">🔓 Take over another order (manager)</div>
+            </div>
+        </div>
+        <div id="completedContent" style="flex:1;display:none;flex-direction:column;overflow:hidden;">
+            <div class="order-list" id="completedList"></div>
+        </div>
         <div class="poll-status" id="pollStatus">Checking for orders...</div>
     </div>
 
     <!-- ORDER WORK -->
     <div class="order-work-screen" id="orderWorkScreen">
+        <div class="queue-banner" id="queueBannerWork"></div>
         <div class="work-header">
             <div class="work-header-top">
                 <span class="work-car" id="workCar"></span>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span class="make-timer" id="makeTimer" style="display:none;"></span>
-                    <button class="work-back-btn" id="workBackBtn">← Orders</button>
+                    <button class="work-back-btn" id="workBackBtn">← Back</button>
                 </div>
             </div>
             <div class="work-meta" id="workMeta"></div>
@@ -273,15 +289,13 @@
         <div class="modal-buttons"><button class="modal-btn secondary" id="skipCancelBtn">Go Back</button><button class="modal-btn primary" id="skipConfirmBtn" disabled>Complete Anyway</button></div>
     </div></div>
 
-    <!-- DELETE ORDER MODAL -->
-    <div class="modal-overlay" id="deleteOrderModal"><div class="modal-content">
-        <div class="modal-icon">🗑️</div>
-        <div class="modal-title" style="color:var(--danger);">Delete Order?</div>
-        <div class="modal-message" id="deleteOrderMessage">Are you sure you want to delete this order?</div>
-        <div class="modal-buttons">
-            <button class="modal-btn secondary" id="deleteCancelBtn">Keep It</button>
-            <button class="modal-btn danger" id="deleteConfirmBtn">Yes, Delete</button>
-        </div>
+    <!-- OVERRIDE TAKEOVER MODAL (managers only) -->
+    <div class="modal-overlay" id="overrideModal"><div class="modal-content">
+        <div class="modal-icon">🔓</div>
+        <div class="modal-title" style="color:var(--warning);">Take over an order</div>
+        <div class="modal-message">Manager override — pick a currently-active order to take over.</div>
+        <div class="override-list" id="overrideList"></div>
+        <div class="modal-buttons"><button class="modal-btn secondary" id="overrideCancelBtn">Cancel</button></div>
     </div></div>
 
     <div class="toast" id="toast"></div>
@@ -298,18 +312,10 @@ const SCALE_WATCHDOG_INTERVAL=2000;
 // John Krakauer, Brian Ortiz, Drake Wyman, Olivia Chavarria, Micah Molascon, Caymen Hook
 const OVERRIDE_EMPLOYEES=['EMP-1224','EMP-2309','EMP-7112','EMP-6982','EMP-4372','EMP-3667'];
 
-// Priority items — sundaes, shakes (all variants), and banana splits are
-// the most time-sensitive and complex to make. They must be completed
-// before any other items in the same order. Rationale: shakes separate,
-// sundae toppings compromise fast (whipped melts, fudge cools), splits
-// require station prep. Finishing cones/scoops first means the rest of
-// the order is waiting while the complex items are still being built.
+// Priority items within an order — shakes, sundaes, splits must be made first.
 const PRIORITY_SKUS = [
-    // Sundaes & splits
     'RGSUNDAE','LGSUN','BANSPL',
-    // Regular shakes
     'SMSHAKE','RGSHAKE','KIDSSHAKE',
-    // Specialty shakes (both sizes)
     'BOMBCYC','BOMBCYC-RG',
     'SNOWDRFT','SNOWDRFT-RG',
     'POLARVX','POLARVX-RG',
@@ -322,12 +328,11 @@ function isPriorityItem(item) {
 
 let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null,claiming=false;
 let scaleState='disconnected',lastDataReceived=0,scaleWatchdogTimer=null,scaleVerifyTimer=null,scaleReconnecting=false;
-let pendingDeleteOrderId=null;
-let activeTab='pending';
-let deletedOrderIds=[];
+let activeTab='claimNext';
 let makeTimerInterval=null;
 let orderClaimedAt=null;
 let orderCompletedAt=null;
+let queueStatus={priority_count:0,queue_count:0,oldest_queue_age_ms:0};
 
 const $=id=>document.getElementById(id);
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
@@ -378,6 +383,31 @@ function stopMakeTimer(completedAt) {
             timerEl.style.color = 'var(--text-dim)';
         }
     }
+}
+
+// ===== QUEUE BANNER =====
+function formatAge(ms) {
+    if (!ms || ms < 60000) return 'just now';
+    const m = Math.floor(ms / 60000);
+    if (m < 60) return m + 'm';
+    return Math.floor(m/60) + 'h ' + (m%60) + 'm';
+}
+
+function renderQueueBanners() {
+    const q = queueStatus.queue_count || 0;
+    const age = queueStatus.oldest_queue_age_ms || 0;
+    let cls = '', txt = '', show = true;
+    if (q === 0) { show = false; }
+    else if (q <= 2) { cls = 'calm'; txt = '📋 ' + q + ' order' + (q===1?'':'s') + ' waiting'; }
+    else if (q <= 5) { cls = 'warn'; txt = '⚠️ ' + q + ' orders waiting — please hustle'; }
+    else { cls = 'alert'; txt = '🚨 ' + q + ' ORDERS WAITING — BACKUP BUILDING'; }
+    const ageLine = (show && age > 60000) ? '<div class="queue-banner-age">Oldest: ' + formatAge(age) + '</div>' : '';
+    ['queueBannerClaim','queueBannerWork'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.className = 'queue-banner' + (show ? (' show ' + cls) : '');
+        el.innerHTML = show ? (txt + ageLine) : '';
+    });
 }
 
 // ===== SCALE STATE MACHINE =====
@@ -517,9 +547,14 @@ async function registerEmployee(){
 }
 function loginEmployee(emp){
     currentEmployee={id:emp.employee_id,name:emp.name};
-    $('loginScreen').style.display='none';$('nameInputScreen').classList.remove('active');$('orderListScreen').classList.add('active');
+    $('loginScreen').style.display='none';$('nameInputScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
     $('employeeBadge').textContent=currentEmployee.name;$('employeeBadge').style.display='inline-block';$('logoutBtn').style.display='inline-block';
-    $('pinStatus').textContent='';showToast('Welcome, '+currentEmployee.name+'!');startPolling();
+    $('pinStatus').textContent='';showToast('Welcome, '+currentEmployee.name+'!');
+    // Managers see the override link
+    if (OVERRIDE_EMPLOYEES.indexOf(currentEmployee.id) !== -1) {
+        $('overrideLink').style.display = 'block';
+    }
+    startPolling();
 }
 function resetLogin(){
     pinEntry='';pinMode='login';pendingPin='';
@@ -529,184 +564,195 @@ function resetLogin(){
 }
 $('logoutBtn').addEventListener('click',()=>{
     stopPolling();stopMakeTimer();currentEmployee=null;activeOrder=null;workItems=[];
-    $('orderListScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');
-    $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';resetLogin();
+    $('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');
+    $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';
+    $('overrideLink').style.display='none';
+    resetLogin();
 });
 
 // ===== TABS =====
 function switchTab(tab){
     activeTab=tab;
-    $('tabPending').className='tab-btn'+(tab==='pending'?' active':'');
+    $('tabClaimNext').className='tab-btn'+(tab==='claimNext'?' active':'');
     $('tabCompleted').className='tab-btn'+(tab==='completed'?' active':'');
-    renderOrderList();
+    $('claimNextContent').style.display = (tab==='claimNext' ? 'flex' : 'none');
+    $('completedContent').style.display = (tab==='completed' ? 'flex' : 'none');
+    if (tab === 'completed') fetchCompletedOrders();
 }
 
 // ===== POLLING =====
-function startPolling(){fetchOrders();pollTimer=setInterval(fetchOrders,POLL_INTERVAL);}
+function startPolling(){fetchQueueStatus();pollTimer=setInterval(fetchQueueStatus,POLL_INTERVAL);}
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
-async function fetchOrders(){
+async function fetchQueueStatus(){
     try{
-        const fresh=await apiGet('getpendingorders',{location:LOCATION});
-        const freshFiltered=fresh.filter(o=>deletedOrderIds.indexOf(o.order_id)===-1);
-        orders=freshFiltered.map(o=>{
-            const local=orders.find(l=>l.order_id===o.order_id);
-            if(local&&local.completed_at&&!o.completed_at)return local;
-            return o;
-        });
-        if(!activeOrder&&!claiming)renderOrderList();
+        queueStatus = await apiGet('getqueuestatus',{location:LOCATION});
+        renderQueueBanners();
+        // Empty-state visibility on the claim-next screen
+        const hasQueue = (queueStatus.queue_count || 0) > 0;
+        $('claimNextEmpty').style.display = hasQueue ? 'none' : 'block';
+        $('claimNextBtn').style.display = hasQueue ? 'block' : 'none';
+        if (activeTab === 'completed') fetchCompletedOrders();
         $('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();
-    }
-    catch(e){$('pollStatus').textContent='Connection error - retrying...';}
-}
-
-// ===== ORDER LIST =====
-function renderOrderList(){
-    const list=$('orderList');
-    const visible=orders.filter(o=>deletedOrderIds.indexOf(o.order_id)===-1);
-
-    if(activeTab==='pending'){
-        const unclaimed=visible.filter(o=>!o.claimed_by&&!o.completed_at);
-        const mine=visible.filter(o=>o.claimed_by&&!o.completed_at&&currentEmployee&&o.claimed_by===currentEmployee.name);
-        const others=visible.filter(o=>o.claimed_by&&!o.completed_at&&(!currentEmployee||o.claimed_by!==currentEmployee.name));
-        const pendingCount=unclaimed.length+mine.length;
-        $('orderCountBadge').textContent=pendingCount;
-
-        if(!pendingCount&&!others.length){
-            list.innerHTML='<div class="no-orders"><div class="icon">🎉</div><div class="msg">No pending orders</div></div>';
-            return;
-        }
-
-        let h='';
-        mine.forEach(o=>{
-            const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
-            const isWalkUp=o.order_type==='WALK-UP';
-            const typeBanner=isWalkUp
-                ?'<div style="background:#0ea5e9;color:white;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚶 WALK-UP — COUNTER</div>'
-                :'<div style="background:#f59e0b;color:#1a1a2e;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚗 DRIVE-THRU — WINDOW</div>';
-            h+='<div class="order-card-wrap">';
-            h+='<div class="order-card mine" style="padding-top:0;overflow:hidden;" data-order-id="'+o.order_id+'">';
-            h+=typeBanner;
-            h+='<div style="padding:14px 16px 0;">';
-            h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
-            h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
-            h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
-            h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">▶ Resume your order</div>';
-            if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
-            if(o.items.some(i=>i.allergyAlert))h+='<div class="order-card-allergy">⚠️🧤 ALLERGY ITEM IN ORDER 🧤⚠️</div>';
-            h+='</div></div>';
-            h+='<button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button>';
-            h+='</div>';
-        });
-        unclaimed.forEach(o=>{
-            const wc=o.items.filter(i=>i.needsWeigh).length,pc=o.items.filter(i=>!i.needsWeigh).length;
-            const isWalkUp=o.order_type==='WALK-UP';
-            const typeBanner=isWalkUp
-                ?'<div style="background:#0ea5e9;color:white;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚶 WALK-UP — COUNTER</div>'
-                :'<div style="background:#f59e0b;color:#1a1a2e;font-weight:900;font-size:1rem;padding:6px 14px;border-radius:8px 8px 0 0;letter-spacing:0.05em;">🚗 DRIVE-THRU — WINDOW</div>';
-            h+='<div class="order-card-wrap">';
-            h+='<div class="order-card" style="padding-top:0;overflow:hidden;" data-order-id="'+o.order_id+'">';
-            h+=typeBanner;
-            h+='<div style="padding:14px 16px 0;">';
-            h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
-            h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
-            h+='<div class="order-card-items">';if(wc)h+='<span class="weigh-count">⚖️ '+wc+' weigh</span>';if(pc)h+='<span class="prep-count">☑ '+pc+' prep</span>';h+='</div>';
-            if(o.notes)h+='<div class="order-card-notes">📝 '+esc(o.notes)+'</div>';
-            if(o.items.some(i=>i.allergyAlert))h+='<div class="order-card-allergy">⚠️🧤 ALLERGY ITEM IN ORDER 🧤⚠️</div>';
-            h+='</div></div>';
-            h+='<button class="order-card-delete" data-delete-id="'+o.order_id+'" data-car="'+esc(o.car_name||'No Car')+'" title="Delete order">🗑</button>';
-            h+='</div>';
-        });
-        others.forEach(o=>{
-            const canOverride=currentEmployee&&OVERRIDE_EMPLOYEES.indexOf(currentEmployee.id)!==-1;
-            const cardClass=canOverride?'order-card claimed-override':'order-card claimed';
-            const dataAttrs=canOverride?' data-order-id="'+o.order_id+'" data-override="1"':'';
-            h+='<div class="'+cardClass+'"'+dataAttrs+'><div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.created_at)+'</span></div>';
-            h+='<div class="order-card-id">'+o.order_id+'</div>';
-            h+='<div class="order-card-claimed">🔒 Claimed by '+esc(o.claimed_by)+(canOverride?' — tap to take over':'')+'</div></div>';
-        });
-        list.innerHTML=h;
-
-        list.querySelectorAll('.order-card-delete').forEach(btn=>{
-            btn.addEventListener('click',e=>{
-                pendingDeleteOrderId=btn.dataset.deleteId;
-                $('deleteOrderMessage').textContent='Delete order for "'+btn.dataset.car+'"? Use this for skipped drivers or test orders only.';
-                $('deleteOrderModal').classList.add('show');
-            });
-        });
-        list.querySelectorAll('.order-card[data-order-id]').forEach(c=>{
-            c.addEventListener('click',()=>{
-                const oid=c.dataset.orderId;
-                const isOverride=c.dataset.override==='1';
-                const o=orders.find(x=>x.order_id===oid);
-                if(!o)return;
-                if(isOverride){
-                    if(!confirm('This order is claimed by '+o.claimed_by+'. Take it over?'))return;
-                    claimOrder(oid);
-                }else if(o.claimed_by===currentEmployee.name){
-                    resumeOrder(o);
-                }else{
-                    claimOrder(oid);
-                }
-            });
-        });
-
-    } else {
-        const completed=visible.filter(o=>o.completed_at);
-        $('orderCountBadge').textContent=completed.length;
-        if(!completed.length){
-            list.innerHTML='<div class="no-orders"><div class="icon">📋</div><div class="msg">No completed orders</div></div>';
-            return;
-        }
-        let h='';
-        completed.forEach(o=>{
-            h+='<div class="order-card completed">';
-            h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
-            h+='<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
-            const makeTime = o.claimed_at && o.completed_at ? formatMakeTime(o.claimed_at, o.completed_at) : null;
-            h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed'+(makeTime?' — ⏱ '+makeTime:'')+'</div>';
-            h+='</div>';
-        });
-        list.innerHTML=h;
+    }catch(e){
+        $('pollStatus').textContent='Connection error - retrying...';
     }
 }
 
-function orderAge(ts){const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
-
-// ===== DELETE ORDER MODAL =====
-$('deleteCancelBtn').addEventListener('click',()=>{pendingDeleteOrderId=null;$('deleteOrderModal').classList.remove('show');});
-$('deleteConfirmBtn').addEventListener('click',async()=>{
-    if(!pendingDeleteOrderId){$('deleteOrderModal').classList.remove('show');return;}
-    const id=pendingDeleteOrderId;
-    $('deleteOrderModal').classList.remove('show');
-    pendingDeleteOrderId=null;
-    deletedOrderIds.push(id);
-    orders=orders.filter(o=>o.order_id!==id);
-    renderOrderList();
-    showToast('Order deleted');
-    try{const url=new URL(API_BASE);url.searchParams.set('action','deleteorder');url.searchParams.set('order_id',id);fetch(url.toString(),{redirect:'follow',mode:'no-cors'});}catch(e){console.log('Server delete failed:',e);}
-});
-
-// ===== CLAIM =====
-async function claimOrder(id){
-    if(claiming)return;const o=orders.find(x=>x.order_id===id);if(!o)return;claiming=false;
-    const now = new Date().toISOString();
-    activeOrder=o;activeOrder.claimed_by=currentEmployee.name;activeOrder.claimed_at=now;
-    workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
-    showWorkScreen();
-    startMakeTimer(now);
-    try{await apiGet('claimorder',{order_id:id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});}
-    catch(e){console.log('Claim sync failed:',e);}
+async function fetchCompletedOrders(){
+    try{
+        const all = await apiGet('getpendingorders',{location:LOCATION});
+        orders = all;
+        renderCompletedList();
+    }catch(e){}
 }
-function resumeOrder(o){
-    if(claiming)return;claiming=true;activeOrder=o;
-    workItems=o.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));claiming=false;
-    showWorkScreen();
-    startMakeTimer(o.claimed_at || new Date().toISOString());
+
+function renderCompletedList(){
+    const list = $('completedList');
+    const completed = (orders||[]).filter(o => o.completed_at);
+    if (!completed.length) {
+        list.innerHTML = '<div class="no-orders"><div class="icon">📋</div><div class="msg">No completed orders</div></div>';
+        return;
+    }
+    let h = '';
+    completed.forEach(o => {
+        h += '<div class="order-card completed">';
+        h += '<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
+        h += '<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
+        const makeTime = o.claimed_at && o.completed_at ? formatMakeTime(o.claimed_at, o.completed_at) : null;
+        h += '<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed'+(makeTime?' — ⏱ '+makeTime:'')+'</div>';
+        h += '</div>';
+    });
+    list.innerHTML = h;
+}
+
+function orderAge(ts){if(!ts)return '';const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
+
+// ===== CLAIM NEXT =====
+$('claimNextBtn').addEventListener('click', claimNextOrder);
+
+async function claimNextOrder(){
+    if (claiming) return;
+    claiming = true;
+    const btn = $('claimNextBtn');
+    const msg = $('claimNextMsg');
+    btn.disabled = true;
+    btn.textContent = '⏳ Claiming...';
+    msg.textContent = '';
+    try {
+        const r = await apiGet('claimnextorder', {
+            location: LOCATION,
+            employee_id: currentEmployee.id,
+            employee_name: currentEmployee.name
+        });
+        if (r.success) {
+            const claimedAt = new Date().toISOString();
+            activeOrder = {
+                order_id: r.order_id,
+                items: r.items || [],
+                car_name: r.car_name || '',
+                notes: r.notes || '',
+                payment_type: r.payment_type || '',
+                order_type: r.order_type || 'DRIVE-THRU',
+                claimed_by: currentEmployee.name,
+                claimed_at: claimedAt
+            };
+            workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
+            claiming = false;
+            btn.disabled = false;
+            btn.textContent = '⚡ Claim Next Order';
+            showWorkScreen();
+            startMakeTimer(claimedAt);
+        } else {
+            claiming = false;
+            btn.disabled = false;
+            btn.textContent = '⚡ Claim Next Order';
+            const reason = r.reason || r.error || 'Could not claim';
+            msg.textContent = reason;
+            setTimeout(()=>{ if (msg.textContent === reason) msg.textContent = ''; }, 4000);
+            fetchQueueStatus();
+        }
+    } catch(e) {
+        claiming = false;
+        btn.disabled = false;
+        btn.textContent = '⚡ Claim Next Order';
+        msg.textContent = 'Connection error — try again';
+    }
+}
+
+// ===== OVERRIDE TAKEOVER (managers) =====
+async function openOverrideModal(){
+    const modal = $('overrideModal');
+    const list = $('overrideList');
+    list.innerHTML = '<div class="override-empty">Loading...</div>';
+    modal.classList.add('show');
+    try {
+        const all = await apiGet('getpendingorders',{location:LOCATION});
+        const active = all.filter(o => o.claimed_by && !o.completed_at);
+        if (!active.length) {
+            list.innerHTML = '<div class="override-empty">No active orders to take over</div>';
+            return;
+        }
+        let h = '';
+        active.forEach(o => {
+            const wc = (o.items||[]).filter(i=>i.needsWeigh).length;
+            const pc = (o.items||[]).filter(i=>!i.needsWeigh).length;
+            h += '<button class="override-order-btn" data-oid="'+esc(o.order_id)+'">';
+            h += '<div style="font-weight:800;">'+esc(o.car_name||'No Car')+' — '+esc(o.order_id)+'</div>';
+            h += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">Claimed by '+esc(o.claimed_by)+(o.claimed_at?' • '+orderAge(o.claimed_at):'')+'</div>';
+            h += '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">'+(wc?wc+' weigh · ':'')+(pc?pc+' prep':'')+'</div>';
+            h += '</button>';
+        });
+        list.innerHTML = h;
+        list.querySelectorAll('.override-order-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const oid = btn.dataset.oid;
+                const o = active.find(x => x.order_id === oid);
+                if (!o) return;
+                if (!confirm('Take over order '+o.order_id+' from '+o.claimed_by+'?')) return;
+                overrideClaim(o);
+            });
+        });
+    } catch(e) {
+        list.innerHTML = '<div class="override-empty">Connection error</div>';
+    }
+}
+$('overrideCancelBtn').addEventListener('click', ()=> $('overrideModal').classList.remove('show'));
+
+async function overrideClaim(order){
+    $('overrideModal').classList.remove('show');
+    try {
+        const r = await apiGet('claimorder', {
+            order_id: order.order_id,
+            employee_id: currentEmployee.id,
+            employee_name: currentEmployee.name
+        });
+        if (r.success) {
+            const claimedAt = new Date().toISOString();
+            activeOrder = {
+                order_id: order.order_id,
+                items: r.items || order.items || [],
+                car_name: order.car_name || '',
+                notes: order.notes || '',
+                payment_type: order.payment_type || '',
+                order_type: order.order_type || 'DRIVE-THRU',
+                claimed_by: currentEmployee.name,
+                claimed_at: claimedAt
+            };
+            workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
+            showWorkScreen();
+            startMakeTimer(claimedAt);
+            showToast('Took over '+order.order_id);
+        } else {
+            showToast(r.error||r.reason||'Could not take over',true);
+        }
+    } catch(e) {
+        showToast('Connection error',true);
+    }
 }
 
 // ===== WORK SCREEN =====
 function showWorkScreen(){
-    $('orderListScreen').classList.remove('active');$('orderWorkScreen').classList.add('active');
+    $('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.add('active');
     $('workCar').textContent=activeOrder.car_name||'No Car';
     $('workMeta').textContent=activeOrder.order_id+(activeOrder.payment_type?' • '+activeOrder.payment_type:'');
     $('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';
@@ -735,8 +781,6 @@ function renderWorkItems(){
             parents.push(i);
         }
     });
-    // Priority items (shakes/sundaes/splits) go to the top of their section
-    // and lock the rest of the order until done.
     const priorityPending = parents.some(i => isPriorityItem(i) && !i.done);
     const sortFn = (a,b) => {
         const ap = isPriorityItem(a) ? 0 : 1;
@@ -760,7 +804,6 @@ function renderWorkItem(item,isWeigh,priorityPending){
     const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';
     const isPriority = isPriorityItem(item);
     const priorityClass = isPriority ? ' priority' : '';
-    // Lock non-priority items when there's a pending priority item
     const lockedClass = (priorityPending && !isPriority && !item.done) ? ' locked' : '';
     let wt='';
     if(item.done&&item.weightOz!==null){const d=item.weightOz-item.targetOz;let wc='good';if(Math.abs(d)>TOLERANCE)wc=d>0?'over':'under';wt='<div class="work-item-weight '+wc+'">✓ '+item.weightOz.toFixed(1)+' oz</div>';}
@@ -787,8 +830,6 @@ function renderWorkItem(item,isWeigh,priorityPending){
 // ===== ITEM TAP =====
 function handleItemTap(idx){
     const item=workItems[idx];if(!item)return;
-    // Block completion of non-priority items while shakes/sundaes/splits
-    // are still pending. Un-checking a completed item is still allowed.
     if(!item.done && !isPriorityItem(item)){
         const priorityPending = workItems.some(i =>
             !i.isMod && !i.isTopping && !i.isSundaeTopping &&
@@ -879,15 +920,13 @@ async function completeOrder(){
             updateCompleteBtn();
             return;
         }
-        const completedId=activeOrder.order_id;
         const now=new Date().toISOString();
         stopMakeTimer(now);
-        orders=orders.map(o=>o.order_id===completedId?{...o,completed_at:now,claimed_by:currentEmployee.name}:o);
         showToast('✓ Order complete!');
         activeOrder=null;workItems=[];
         $('makeTimer').style.display='none';
-        $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
-        renderOrderList();
+        $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
+        fetchQueueStatus();
     }catch(e){
         showToast('Connection error — try again',true);
         btn.disabled=false;
@@ -896,12 +935,12 @@ async function completeOrder(){
 }
 $('workBackBtn').addEventListener('click',()=>{
     const dc=workItems.filter(i=>i.done).length;
-    if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing?'))return;
+    if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing? Your order will stay claimed.'))return;
     stopMakeTimer();
     activeOrder=null;workItems=[];
     $('makeTimer').style.display='none';
-    $('orderWorkScreen').classList.remove('active');$('orderListScreen').classList.add('active');
-    renderOrderList();
+    $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
+    fetchQueueStatus();
 });
 // INIT
 if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
