@@ -409,7 +409,8 @@ function formatAge(ms) {
 }
 
 function renderQueueBanners() {
-    const q = queueStatus.queue_count || 0;
+    // Banner reflects total customer wait — claimed OR unclaimed, as long as not completed
+    const q = queueStatus.in_progress_count || 0;
     const age = queueStatus.oldest_queue_age_ms || 0;
     let cls = '', txt = '', show = true;
     if (q === 0) { show = false; }
