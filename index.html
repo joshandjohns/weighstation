@@ -247,7 +247,8 @@
             <div class="work-header-top">
                 <span class="work-car" id="workCar"></span>
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <span class="make-timer" id="makeTimer" style="display:none;"></span>
+                    <span class="make-timer" id="queueTimer" style="display:none;" title="Time since order was created"></span>
+                    <span class="make-timer" id="makeTimer" style="display:none;" title="Time since you claimed this order"></span>
                     <button class="work-back-btn" id="workBackBtn">← Back</button>
                 </div>
             </div>
@@ -364,10 +365,19 @@ function startMakeTimer(claimedAt) {
     orderClaimedAt = claimedAt;
     orderCompletedAt = null;
     const timerEl = $('makeTimer');
+    const queueEl = $('queueTimer');
     timerEl.style.display = 'inline-block';
+    const createdAt = activeOrder && activeOrder.created_at;
+    if (queueEl) {
+        queueEl.style.display = createdAt ? 'inline-block' : 'none';
+    }
     function update() {
         timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt);
         timerEl.style.color = getMakeTimeColor(orderClaimedAt, orderCompletedAt);
+        if (queueEl && createdAt) {
+            queueEl.textContent = '👥 ' + formatMakeTime(createdAt, orderCompletedAt);
+            queueEl.style.color = getMakeTimeColor(createdAt, orderCompletedAt);
+        }
     }
     update();
     makeTimerInterval = setInterval(update, 1000);
@@ -378,9 +388,14 @@ function stopMakeTimer(completedAt) {
     if (completedAt) {
         orderCompletedAt = completedAt;
         const timerEl = $('makeTimer');
+        const queueEl = $('queueTimer');
         if (timerEl) {
             timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt);
             timerEl.style.color = 'var(--text-dim)';
+        }
+        if (queueEl && activeOrder && activeOrder.created_at) {
+            queueEl.textContent = '👥 ' + formatMakeTime(activeOrder.created_at, orderCompletedAt);
+            queueEl.style.color = 'var(--text-dim)';
         }
     }
 }
@@ -654,7 +669,8 @@ async function claimNextOrder(){
                 payment_type: r.payment_type || '',
                 order_type: r.order_type || 'DRIVE-THRU',
                 claimed_by: currentEmployee.name,
-                claimed_at: claimedAt
+                claimed_at: claimedAt,
+                created_at: r.created_at || null
             };
             workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
             claiming = false;
@@ -736,7 +752,8 @@ async function overrideClaim(order){
                 payment_type: order.payment_type || '',
                 order_type: order.order_type || 'DRIVE-THRU',
                 claimed_by: currentEmployee.name,
-                claimed_at: claimedAt
+                claimed_at: claimedAt,
+                created_at: r.created_at || order.created_at || null
             };
             workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
             showWorkScreen();
@@ -925,6 +942,7 @@ async function completeOrder(){
         showToast('✓ Order complete!');
         activeOrder=null;workItems=[];
         $('makeTimer').style.display='none';
+        $('queueTimer').style.display='none';
         $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
         fetchQueueStatus();
     }catch(e){
@@ -939,6 +957,7 @@ $('workBackBtn').addEventListener('click',()=>{
     stopMakeTimer();
     activeOrder=null;workItems=[];
     $('makeTimer').style.display='none';
+    $('queueTimer').style.display='none';
     $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
     fetchQueueStatus();
 });
