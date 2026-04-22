@@ -409,17 +409,40 @@ function formatAge(ms) {
 }
 
 function renderQueueBanners() {
-    // Banner reflects total customer wait — claimed OR unclaimed, as long as not completed
-    // Fallback to queue_count + priority_count if backend hasn't been redeployed yet
-    const q = (typeof queueStatus.in_progress_count === 'number')
-        ? queueStatus.in_progress_count
+    // Split banner: show "X making • Y ready" so the team sees where the bottleneck is
+    // Fallback to summed counts if backend is old
+    const making = (typeof queueStatus.making_count === 'number')
+        ? queueStatus.making_count
         : ((queueStatus.queue_count || 0) + (queueStatus.priority_count || 0));
+    const ready = (typeof queueStatus.ready_count === 'number')
+        ? queueStatus.ready_count
+        : 0;
+    const total = making + ready;
     const age = queueStatus.oldest_queue_age_ms || 0;
+
     let cls = '', txt = '', show = true;
-    if (q === 0) { show = false; }
-    else if (q <= 2) { cls = 'calm'; txt = '📋 ' + q + ' order' + (q===1?'':'s') + ' waiting'; }
-    else if (q <= 5) { cls = 'warn'; txt = '⚠️ ' + q + ' orders waiting — please hustle'; }
-    else { cls = 'alert'; txt = '🚨 ' + q + ' ORDERS WAITING — BACKUP BUILDING'; }
+
+    if (total === 0) {
+        show = false;
+    } else {
+        // Build text. Hide "ready" portion when 0 to reduce clutter.
+        let parts = [making + ' making'];
+        if (ready > 0) parts.push(ready + ' ready');
+        const body = parts.join(' • ');
+
+        // Tier driven by total
+        if (total <= 2) {
+            cls = 'calm';
+            txt = '📋 ' + body;
+        } else if (total <= 5) {
+            cls = 'warn';
+            txt = '⚠️ ' + body + ' — please hustle';
+        } else {
+            cls = 'alert';
+            txt = '🚨 ' + body.toUpperCase() + ' — BACKUP BUILDING';
+        }
+    }
+
     const ageLine = (show && age > 60000) ? '<div class="queue-banner-age">Oldest: ' + formatAge(age) + '</div>' : '';
     ['queueBannerClaim','queueBannerWork'].forEach(id => {
         const el = $(id);
