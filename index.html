@@ -409,25 +409,24 @@ function formatAge(ms) {
 }
 
 function renderQueueBanners() {
-    // Split banner: show "X making • Y ready" so the team sees where the bottleneck is
-    // Fallback to summed counts if backend is old
-    const making = (typeof queueStatus.making_count === 'number')
-        ? queueStatus.making_count
-        : ((queueStatus.queue_count || 0) + (queueStatus.priority_count || 0));
-    const ready = (typeof queueStatus.ready_count === 'number')
-        ? queueStatus.ready_count
-        : 0;
-    const total = making + ready;
-    const age = queueStatus.oldest_queue_age_ms || 0;
+    // Three-part banner: "X to claim • Y making • Z ready"
+    // Only show each portion when non-zero. Fallback logic handles older backend.
+    const toClaim = queueStatus.queue_count || 0;
+    const making  = queueStatus.priority_count || 0;
+    const ready   = queueStatus.ready_count || 0;
+    const total   = toClaim + making + ready;
+    const age     = queueStatus.oldest_queue_age_ms || 0;
 
     let cls = '', txt = '', show = true;
 
     if (total === 0) {
         show = false;
     } else {
-        // Build text. Hide "ready" portion when 0 to reduce clutter.
-        let parts = [making + ' making'];
-        if (ready > 0) parts.push(ready + ' ready');
+        // Build only the non-zero parts
+        const parts = [];
+        if (toClaim > 0) parts.push(toClaim + ' to claim');
+        if (making  > 0) parts.push(making  + ' making');
+        if (ready   > 0) parts.push(ready   + ' ready');
         const body = parts.join(' • ');
 
         // Tier driven by total
@@ -442,6 +441,15 @@ function renderQueueBanners() {
             txt = '🚨 ' + body.toUpperCase() + ' — BACKUP BUILDING';
         }
     }
+
+    const ageLine = (show && age > 60000) ? '<div class="queue-banner-age">Oldest: ' + formatAge(age) + '</div>' : '';
+    ['queueBannerClaim','queueBannerWork'].forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        el.className = 'queue-banner' + (show ? (' show ' + cls) : '');
+        el.innerHTML = show ? (txt + ageLine) : '';
+    });
+}
 
     const ageLine = (show && age > 60000) ? '<div class="queue-banner-age">Oldest: ' + formatAge(age) + '</div>' : '';
     ['queueBannerClaim','queueBannerWork'].forEach(id => {
