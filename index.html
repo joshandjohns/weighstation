@@ -451,15 +451,6 @@ function renderQueueBanners() {
     });
 }
 
-    const ageLine = (show && age > 60000) ? '<div class="queue-banner-age">Oldest: ' + formatAge(age) + '</div>' : '';
-    ['queueBannerClaim','queueBannerWork'].forEach(id => {
-        const el = $(id);
-        if (!el) return;
-        el.className = 'queue-banner' + (show ? (' show ' + cls) : '');
-        el.innerHTML = show ? (txt + ageLine) : '';
-    });
-}
-
 // ===== SCALE STATE MACHINE =====
 function setScaleState(newState){
     scaleState=newState;
