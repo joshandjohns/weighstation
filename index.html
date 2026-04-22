@@ -570,6 +570,74 @@ function loginEmployee(emp){
         $('overrideLink').style.display = 'block';
     }
     startPolling();
+    // Check if this employee has an in-progress order and auto-resume
+    tryResumeActiveOrder();
+}
+
+// If the employee has an unfinished claimed order at this location, restore
+// it and jump straight to the work screen. Called right after login.
+async function tryResumeActiveOrder(){
+    try {
+        const r = await apiGet('getactiveorderforemployee', {
+            location: LOCATION,
+            employee_name: currentEmployee.name
+        });
+        if (!r || !r.success || !r.order) return;
+        const o = r.order;
+        activeOrder = {
+            order_id: o.order_id,
+            items: o.items || [],
+            car_name: o.car_name || '',
+            notes: o.notes || '',
+            payment_type: o.payment_type || '',
+            order_type: o.order_type || 'DRIVE-THRU',
+            claimed_by: currentEmployee.name,
+            claimed_at: o.claimed_at || new Date().toISOString(),
+            created_at: o.created_at || null
+        };
+        // Build workItems and overlay any saved per-item progress by index
+        const saved = Array.isArray(o.item_progress) ? o.item_progress : [];
+        const savedByIdx = {};
+        saved.forEach(p => { if (typeof p.idx === 'number') savedByIdx[p.idx] = p; });
+        workItems = activeOrder.items.map((item, idx) => {
+            const base = {...item, idx, done:false, weightOz:null, skipped:false, skipReason:null};
+            const s = savedByIdx[idx];
+            if (s) {
+                base.done = !!s.done;
+                base.weightOz = (typeof s.weight_oz === 'number') ? s.weight_oz : null;
+                base.skipped = !!s.skipped;
+                base.skipReason = s.skip_reason || null;
+            }
+            return base;
+        });
+        showWorkScreen();
+        startMakeTimer(activeOrder.claimed_at);
+        showToast('Resumed '+activeOrder.order_id);
+    } catch(e) {
+        // Silent — not being able to resume is not fatal
+    }
+}
+
+// Debounced save of per-item progress to server. Called whenever workItems
+// changes. 500ms debounce so rapid taps don't create a flood of API calls.
+let _saveProgressTimer=null;
+function saveProgressDebounced(){
+    if (!activeOrder || !activeOrder.order_id) return;
+    if (_saveProgressTimer) clearTimeout(_saveProgressTimer);
+    _saveProgressTimer = setTimeout(()=>{
+        _saveProgressTimer = null;
+        const snapshot = workItems.map(i => ({
+            idx: i.idx,
+            done: !!i.done,
+            weight_oz: (typeof i.weightOz === 'number') ? i.weightOz : null,
+            skipped: !!i.skipped,
+            skip_reason: i.skipReason || null
+        }));
+        apiPost('saveitemprogress', {
+            order_id: activeOrder.order_id,
+            item_progress: snapshot
+        }).catch(()=>{/* silent */});
+    }, 500);
 }
 function resetLogin(){
     pinEntry='';pinMode='login';pendingPin='';
@@ -815,6 +883,7 @@ function renderWorkItems(){
     $('itemsScroll').innerHTML=h;
     $('itemsScroll').querySelectorAll('.work-item').forEach(el=>{el.addEventListener('click',()=>handleItemTap(parseInt(el.dataset.idx)));});
     updateCompleteBtn();
+    saveProgressDebounced();
 }
 
 function renderWorkItem(item,isWeigh,priorityPending){
