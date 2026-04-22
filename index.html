@@ -249,7 +249,6 @@
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span class="make-timer" id="queueTimer" style="display:none;" title="Time since order was created"></span>
                     <span class="make-timer" id="makeTimer" style="display:none;" title="Time since you claimed this order"></span>
-                    <button class="work-back-btn" id="workBackBtn">← Back</button>
                 </div>
             </div>
             <div class="work-meta" id="workMeta"></div>
@@ -1084,16 +1083,6 @@ async function completeOrder(){
         updateCompleteBtn();
     }
 }
-$('workBackBtn').addEventListener('click',()=>{
-    const dc=workItems.filter(i=>i.done).length;
-    if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing? Your order will stay claimed.'))return;
-    stopMakeTimer();
-    activeOrder=null;workItems=[];
-    $('makeTimer').style.display='none';
-    $('queueTimer').style.display='none';
-    $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
-    fetchQueueStatus();
-});
 // INIT
 if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
 </script>
