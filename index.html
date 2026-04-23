@@ -249,7 +249,6 @@
                 <div style="display:flex;align-items:center;gap:10px;">
                     <span class="make-timer" id="queueTimer" style="display:none;" title="Time since order was created"></span>
                     <span class="make-timer" id="makeTimer" style="display:none;" title="Time since you claimed this order"></span>
-                    <button class="work-back-btn" id="workBackBtn">← Back</button>
                 </div>
             </div>
             <div class="work-meta" id="workMeta"></div>
@@ -722,13 +721,90 @@ function renderCompletedList(){
         list.innerHTML = '<div class="no-orders"><div class="icon">📋</div><div class="msg">No completed orders</div></div>';
         return;
     }
+    // Newest first
+    completed.sort((a,b) => new Date(b.completed_at) - new Date(a.completed_at));
+
+    // Color-coded thresholds (seconds)
+    const makeColor = s => {
+        if (s < 120) return '#4ade80';   // green
+        if (s < 210) return '#facc15';   // yellow
+        if (s < 300) return '#fb923c';   // orange
+        return '#ef4444';                 // red
+    };
+    const totalColor = s => {
+        if (s < 180) return '#4ade80';
+        if (s < 300) return '#facc15';
+        if (s < 480) return '#fb923c';
+        return '#ef4444';
+    };
+    const fmtMMSS = s => {
+        if (s === null || s === undefined || isNaN(s) || s < 0) return '—';
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return m + ':' + sec.toString().padStart(2,'0');
+    };
+    const secsBetween = (startIso, endIso) => {
+        if (!startIso || !endIso) return null;
+        return Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000);
+    };
+
     let h = '';
     completed.forEach(o => {
-        h += '<div class="order-card completed">';
-        h += '<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
-        h += '<div class="order-card-id">'+o.order_id+(o.payment_type?' • '+o.payment_type:'')+'</div>';
-        const makeTime = o.claimed_at && o.completed_at ? formatMakeTime(o.claimed_at, o.completed_at) : null;
-        h += '<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:4px;">✓ Completed'+(makeTime?' — ⏱ '+makeTime:'')+'</div>';
+        const makeSecs = secsBetween(o.claimed_at, o.completed_at);
+        // Customer wait: drive-thru uses picked_up_at; walk-ups use completed_at
+        const endIso = (o.order_type === 'DRIVE-THRU') ? (o.picked_up_at || o.completed_at) : o.completed_at;
+        const totalSecs = secsBetween(o.created_at, endIso);
+
+        const typeBadge = o.order_type === 'WALK-UP'
+            ? '<span style="display:inline-block;background:#0ea5e9;color:white;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚶 WALK-UP</span>'
+            : '<span style="display:inline-block;background:#f59e0b;color:#1a1a2e;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚗 DRIVE-THRU</span>';
+
+        h += '<div class="order-card completed" style="display:block;">';
+        // Header: car name + age
+        h += '<div class="order-card-top">';
+        h += '<span class="order-card-car">'+esc(o.car_name||'No Car')+typeBadge+'</span>';
+        h += '<span class="order-card-time">'+orderAge(o.completed_at)+'</span>';
+        h += '</div>';
+        // Meta: ID, payment, who made it
+        h += '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">';
+        h += o.order_id + (o.payment_type?' • '+o.payment_type:'');
+        if (o.claimed_by) h += ' • made by ' + esc(o.claimed_by);
+        h += '</div>';
+        // Timing — two lines, color coded
+        if (makeSecs !== null || totalSecs !== null) {
+            h += '<div style="margin-top:6px;font-size:0.85rem;font-weight:700;">';
+            if (makeSecs !== null) {
+                h += '<div style="color:'+makeColor(makeSecs)+';">⏱ Make: '+fmtMMSS(makeSecs)+'</div>';
+            }
+            if (totalSecs !== null) {
+                h += '<div style="color:'+totalColor(totalSecs)+';margin-top:2px;">👥 Customer wait: '+fmtMMSS(totalSecs)+'</div>';
+            }
+            h += '</div>';
+        }
+        // Order-level notes
+        if (o.notes) {
+            h += '<div style="font-size:0.85rem;color:var(--warning);font-weight:600;margin-top:6px;">📝 '+esc(o.notes)+'</div>';
+        }
+        // Items
+        const itemsForDisplay = (o.all_items && o.all_items.length) ? o.all_items : (o.items || []);
+        if (itemsForDisplay.length) {
+            h += '<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;">';
+            itemsForDisplay.forEach(it => {
+                const isChild = it.isMod || it.isTopping || it.isSundaeTopping;
+                const indent = isChild ? 'padding-left:14px;color:var(--text-dim);font-size:0.85rem;' : 'font-weight:600;font-size:0.95rem;';
+                const icon = isChild ? '↳ ' : '• ';
+                h += '<div style="margin-top:3px;'+indent+'">';
+                h += icon + esc(it.name || '');
+                if (it.flavors) h += ' <span style="color:var(--text-dim);">— '+esc(it.flavors)+'</span>';
+                if (it.qty && it.qty > 1) h += ' <span style="color:var(--text-dim);">×'+it.qty+'</span>';
+                h += '</div>';
+                if (it.itemNote) h += '<div style="padding-left:14px;font-size:0.8rem;color:var(--warning);">📝 '+esc(it.itemNote)+'</div>';
+                if (it.allergyAlert) h += '<div style="padding-left:14px;font-size:0.8rem;color:#fca5a5;font-weight:700;">⚠️ ALLERGY</div>';
+                if (it.freeSprinkles) h += '<div style="padding-left:14px;font-size:0.8rem;color:#16a34a;font-weight:700;">🎉 Free Sprinkles</div>';
+            });
+            h += '</div>';
+        }
+        h += '<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:6px;">✓ Completed</div>';
         h += '</div>';
     });
     list.innerHTML = h;
@@ -1046,16 +1122,6 @@ async function completeOrder(){
         updateCompleteBtn();
     }
 }
-$('workBackBtn').addEventListener('click',()=>{
-    const dc=workItems.filter(i=>i.done).length;
-    if(dc>0&&!confirm('You have '+dc+' items done. Leave without completing? Your order will stay claimed.'))return;
-    stopMakeTimer();
-    activeOrder=null;workItems=[];
-    $('makeTimer').style.display='none';
-    $('queueTimer').style.display='none';
-    $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
-    fetchQueueStatus();
-});
 // INIT
 if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
 </script>
