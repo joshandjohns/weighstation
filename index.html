@@ -997,7 +997,7 @@ function renderWorkItem(item,isWeigh,priorityPending){
     const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';
     const isPriority = isPriorityItem(item);
     const priorityClass = isPriority ? ' priority' : '';
-    const lockedClass = (priorityPending && !isPriority && !item.done) ? ' locked' : '';
+    const lockedClass = '';
     let wt='';
     if(item.done&&item.weightOz!==null){const d=item.weightOz-item.targetOz;let wc='good';if(Math.abs(d)>TOLERANCE)wc=d>0?'over':'under';wt='<div class="work-item-weight '+wc+'">✓ '+item.weightOz.toFixed(1)+' oz</div>';}
     else if(item.done&&item.skipped){wt='<div class="work-item-weight under">⚠ Not weighed'+(item.skipReason?' - '+item.skipReason:'')+'</div>';}
