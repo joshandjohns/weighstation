@@ -1120,6 +1120,11 @@ async function completeOrder(){
         $('makeTimer').style.display='none';
         $('queueTimer').style.display='none';
         $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
+        // Optimistically update the banner: one moved from "making" to "ready".
+        // Next poll will correct any drift.
+        queueStatus.priority_count = Math.max(0, (queueStatus.priority_count || 0) - 1);
+        queueStatus.ready_count    = (queueStatus.ready_count || 0) + 1;
+        renderQueueBanners();
         fetchQueueStatus();
     }catch(e){
         showToast('Connection error — try again',true);
