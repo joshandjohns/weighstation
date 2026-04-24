@@ -846,6 +846,11 @@ async function claimNextOrder(){
             claiming = false;
             btn.disabled = false;
             btn.textContent = '⚡ Claim Next Order';
+            // Optimistically update the banner: one moved from "to claim" to "making".
+            // Next poll will correct any drift from concurrent claims.
+            queueStatus.queue_count    = Math.max(0, (queueStatus.queue_count    || 0) - 1);
+            queueStatus.priority_count = (queueStatus.priority_count || 0) + 1;
+            renderQueueBanners();
             showWorkScreen();
             startMakeTimer(claimedAt);
         } else {
