@@ -1021,18 +1021,11 @@ function renderWorkItem(item,isWeigh,priorityPending){
 }
 
 // ===== ITEM TAP =====
+// ===== ITEM TAP =====
 function handleItemTap(idx){
     const item=workItems[idx];if(!item)return;
-    if(!item.done && !isPriorityItem(item)){
-        const priorityPending = workItems.some(i =>
-            !i.isMod && !i.isTopping && !i.isSundaeTopping &&
-            isPriorityItem(i) && !i.done
-        );
-        if(priorityPending){
-            showToast('Finish shakes/sundaes/splits first',true);
-            return;
-        }
-    }
+    // Priority items (shakes/sundaes/splits) are SUGGESTED first via the
+    // ⚡ MAKE FIRST badge, but no longer enforced. Scoopers can work in any order.
     if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;renderWorkItems();return;}
     if(item.needsWeigh){
         if(scaleState!=='live'){item.done=true;item.skipped=true;item.skipReason='Scale not connected';renderWorkItems();showToast('✓ '+item.name+' marked done (no scale)');return;}
@@ -1044,7 +1037,6 @@ function handleItemTap(idx){
         else{item.done=true;item.weightOz=currentWeight;weighFeedback(item,currentWeight);renderWorkItems();}
     }else{item.done=true;renderWorkItems();showToast('✓ '+item.name);}
 }
-
 // ===== WEIGHT WARNINGS =====
 function showWeightWarning(item,weight,type){
     pendingWeighItem={item,weight};
