@@ -1009,7 +1009,13 @@ function renderWorkItem(item,isWeigh,priorityPending){
     if(isWeigh&&item.targetOz)h+='<span class="work-item-target">Target: '+item.targetOz+' oz</span>';
     if(item.done)h+='<span class="item-check">✓</span>';
     h+='</div>';
-    if(item.flavors)h+='<div class="work-item-flavors">'+esc(item.flavors)+'</div>';
+    if(item.flavors){
+        // "Hand Packed" prefix for pints of rotating non-anchored flavors.
+        // Flag is stamped on the item at order creation time (DriveThruUI), so
+        // we just render it here without re-deriving anything.
+        var handPackedPrefix = item.handPacked ? '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ' : '';
+        h+='<div class="work-item-flavors">'+handPackedPrefix+esc(item.flavors)+'</div>';
+    }
     if(item.sundaeToppingNote)h+='<div class="work-item-flavors" style="color:#f59e0b;">'+esc(item.sundaeToppingNote)+'</div>';
     if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';
     if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
