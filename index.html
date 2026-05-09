@@ -1010,11 +1010,17 @@ function renderWorkItem(item,isWeigh,priorityPending){
     if(item.done)h+='<span class="item-check">✓</span>';
     h+='</div>';
     if(item.flavors){
-        // "Hand Packed" prefix for pints of rotating non-anchored flavors.
-        // Flag is stamped on the item at order creation time (DriveThruUI), so
-        // we just render it here without re-deriving anything.
-        var handPackedPrefix = item.handPacked ? '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ' : '';
-        h+='<div class="work-item-flavors">'+handPackedPrefix+esc(item.flavors)+'</div>';
+        // For single pints, the boolean handPacked flag drives the prefix.
+        // For Pint Pairs, the prefix is already baked into the flavors string
+        // per-flavor (e.g., "Hand Packed Dirty Chai, Orange Creamsicle") so we
+        // don't apply a top-level prefix here. We DO style any "Hand Packed"
+        // text inside the string so it stands out visually.
+        var prefixedFlavors = esc(item.flavors).replace(/Hand Packed /g,
+            '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ');
+        var handPackedPrefix = (item.handPacked && item.sku !== 'PINTPAIR')
+            ? '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> '
+            : '';
+        h+='<div class="work-item-flavors">'+handPackedPrefix+prefixedFlavors+'</div>';
     }
     if(item.sundaeToppingNote)h+='<div class="work-item-flavors" style="color:#f59e0b;">'+esc(item.sundaeToppingNote)+'</div>';
     if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';
