@@ -974,16 +974,28 @@ function renderWorkItems(){
         }
     });
     const priorityPending = parents.some(i => isPriorityItem(i) && !i.done);
-    const sortFn = (a,b) => {
-        const ap = isPriorityItem(a) ? 0 : 1;
-        const bp = isPriorityItem(b) ? 0 : 1;
-        return ap - bp;
-    };
-    const wi=parents.filter(i=>i.needsWeigh).sort(sortFn);
-    const pi=parents.filter(i=>!i.needsWeigh).sort(sortFn);
+
+    // Three buckets: priority (mixed weigh+prep), non-priority weigh, non-priority prep.
+    // Priority items always render first regardless of type, so a scooper scanning
+    // a long order doesn't miss a shake/sundae/split sitting at the bottom of the
+    // list. Within priority, weigh items come before prep (typical workflow order).
+    const priority = parents.filter(i => isPriorityItem(i));
+    priority.sort((a, b) => (a.needsWeigh ? 0 : 1) - (b.needsWeigh ? 0 : 1));
+    const wi = parents.filter(i => i.needsWeigh && !isPriorityItem(i));
+    const pi = parents.filter(i => !i.needsWeigh && !isPriorityItem(i));
+
     let h='';
     if(priorityPending){
         h+='<div style="grid-column:1 / -1;background:rgba(245,158,11,0.15);border:2px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:4px;color:#f59e0b;font-weight:700;font-size:0.9rem;text-align:center;">⚡ Make the highlighted items first — other items are locked until they are done</div>';
+    }
+    // MAKE FIRST section — combined priority items at the top of the list.
+    // Each item keeps its own weigh-vs-prep visual styling (blue/purple inner)
+    // but the orange "priority" border on each card is what makes them pop as
+    // the must-do-first set. Section stays visible after completion (showing
+    // checkmarks) so the scooper has a sense of progress.
+    if(priority.length){
+        h+='<div class="section-label" style="color:#f59e0b;">⚡ MAKE FIRST ('+priority.filter(i=>i.done).length+'/'+priority.length+')</div>';
+        priority.forEach(i=>{h+=renderWorkItem(i, !!i.needsWeigh, priorityPending);});
     }
     if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true,priorityPending);});}
     if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false,priorityPending);});}
