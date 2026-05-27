@@ -24,7 +24,6 @@
         .header-right{display:flex;align-items:center;gap:8px}
         .logout-btn{background:var(--surface-light);color:var(--text);border:none;padding:6px 14px;border-radius:20px;font-size:0.8rem;font-weight:600;cursor:pointer}
 
-        /* PIN LOGIN */
         .login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:15px;padding:20px}
         .login-title{font-size:1.4rem;color:var(--accent);font-weight:700}
         .login-subtitle{font-size:0.9rem;color:var(--text-dim);text-align:center}
@@ -39,7 +38,6 @@
         .pin-key.zero{grid-column:2}
         .pin-status{font-size:0.85rem;color:var(--warning);min-height:20px;text-align:center}
 
-        /* NAME INPUT */
         .name-input-screen{display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:20px;padding:30px}
         .name-input-screen.active{display:flex}
         .name-input{width:100%;max-width:350px;padding:15px;border-radius:12px;border:2px solid var(--accent);background:var(--surface);color:var(--text);font-size:1.2rem;font-family:inherit;text-align:center}
@@ -49,7 +47,6 @@
         .scale-connect-btn-login{background:var(--surface-light);border:2px solid var(--accent);color:var(--text);padding:10px 20px;border-radius:12px;font-size:0.9rem;font-weight:600;cursor:pointer}
         .scale-connect-btn-login:disabled{opacity:0.5}
 
-        /* QUEUE BANNER */
         .queue-banner{padding:10px 14px;font-weight:800;font-size:0.95rem;text-align:center;letter-spacing:0.02em;flex-shrink:0;display:none}
         .queue-banner.show{display:block}
         .queue-banner.calm{background:rgba(155,89,182,0.2);color:#d4b3e8;border-bottom:2px solid var(--accent)}
@@ -58,7 +55,6 @@
         @keyframes bannerPulse{0%,100%{opacity:1}50%{opacity:0.6}}
         .queue-banner-age{font-size:0.8rem;font-weight:600;opacity:0.85;margin-top:2px}
 
-        /* CLAIM NEXT SCREEN */
         .claim-next-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
         .claim-next-screen.active{display:flex}
         .claim-next-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:24px}
@@ -71,13 +67,11 @@
         .override-link{font-size:0.85rem;color:var(--text-dim);text-decoration:underline;cursor:pointer;padding:8px;margin-top:20px}
         .override-link:active{color:var(--text)}
 
-        /* OVERRIDE MODAL */
         .override-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 20px;max-height:300px;overflow-y:auto}
         .override-order-btn{padding:14px;border-radius:10px;border:2px solid var(--surface-light);background:var(--bg);color:var(--text);font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;text-align:left}
         .override-order-btn:active{border-color:var(--accent)}
         .override-empty{color:var(--text-dim);padding:20px;text-align:center;font-size:0.9rem}
 
-        /* TABS */
         .tab-bar{display:flex;background:var(--surface);border-bottom:2px solid rgba(255,255,255,0.08);flex-shrink:0}
         .tab-btn{flex:1;padding:11px;text-align:center;font-size:0.9rem;font-weight:700;cursor:pointer;color:var(--text-dim);border-bottom:3px solid transparent;transition:all 0.2s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
         .tab-btn.active{color:#fff;border-bottom-color:var(--accent)}
@@ -95,7 +89,6 @@
         .no-orders .icon{font-size:3rem} .no-orders .msg{font-size:1.1rem}
         .poll-status{font-size:0.75rem;color:var(--text-dim);text-align:center;padding:8px;flex-shrink:0}
 
-        /* ORDER WORK */
         .order-work-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
         .order-work-screen.active{display:flex}
         .work-header{background:var(--surface);padding:10px 15px;border-bottom:1px solid rgba(255,255,255,0.1)}
@@ -107,30 +100,50 @@
         .work-order-type-badge{display:inline-block;padding:5px 12px;border-radius:20px;font-size:0.85rem;font-weight:800;margin-top:6px;letter-spacing:0.03em}
         .work-order-type-badge.walkup{background:#0ea5e9;color:white}
         .work-order-type-badge.drivethru{background:#f59e0b;color:#1a1a2e}
-        .scale-bar{background:var(--surface);padding:8px 15px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,0.1)}
+        .scale-bar{background:var(--surface);padding:8px 15px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.1)}
         .scale-weight{font-size:1.8rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:80px}
         .scale-weight .unit{font-size:0.9rem;color:var(--text-dim);font-weight:600}
         .scale-feedback{flex:1;text-align:center;font-weight:700;font-size:1rem}
         .scale-connect-btn{background:var(--accent);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer}
         .scale-reconnect-btn{background:var(--danger);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer;animation:staleFlash 1.5s infinite}
 
-        /* WEIGHER BADGE — sits in scale bar, shows who is currently weighing */
-        .weigher-badge{padding:6px 14px;border-radius:20px;font-size:0.85rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:all 0.15s}
+        /* WEIGHER WRAPPER — stacks label + badge vertically */
+        .weigher-wrapper{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}
+        .weigher-wrapper:active .weigher-badge{transform:scale(0.95)}
+        .weigher-label{font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim)}
+        .weigher-badge{padding:6px 14px;border-radius:20px;font-size:0.85rem;font-weight:700;white-space:nowrap;transition:all 0.2s;display:flex;align-items:center;gap:6px}
         .weigher-badge.is-claimer{background:var(--success);color:var(--bg)}
         .weigher-badge.is-helper{background:#f59e0b;color:#1a1a2e;animation:helperPulse 2s infinite}
-        @keyframes helperPulse{0%,100%{opacity:1}50%{opacity:0.8}}
-        .weigher-badge:active{transform:scale(0.95)}
+        @keyframes helperPulse{0%,100%{opacity:1}50%{opacity:0.75}}
+        .weigher-badge .arrow{font-size:1rem;font-weight:900;opacity:0.6;line-height:1}
+        .add-helper-btn{padding:8px 16px;border-radius:12px;font-size:0.85rem;font-weight:800;cursor:pointer;white-space:nowrap;background:var(--accent);border:none;color:white;transition:all 0.15s;box-shadow:0 2px 8px rgba(155,89,182,0.3)}
+        .add-helper-btn:active{transform:scale(0.95)}
 
         /* WEIGHER PICKER MODAL */
-        .weigher-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 15px;max-height:350px;overflow-y:auto}
-        .weigher-btn{padding:16px;border-radius:10px;border:2px solid var(--surface-light);background:var(--bg);color:var(--text);font-family:inherit;font-size:1.1rem;font-weight:700;cursor:pointer;text-align:center;transition:all 0.1s}
-        .weigher-btn:active{border-color:var(--accent);background:rgba(155,89,182,0.2);transform:scale(0.98)}
+        .weigher-list{display:flex;flex-direction:column;gap:8px;margin:0 0 12px;max-height:300px;overflow-y:auto}
+        .weigher-btn{padding:14px;border-radius:10px;border:2px solid var(--surface-light);background:var(--bg);color:var(--text);font-family:inherit;font-size:1.05rem;font-weight:700;cursor:pointer;text-align:center;transition:all 0.15s}
+        .weigher-btn:active{border-color:var(--accent);background:rgba(155,89,182,0.15);transform:scale(0.97)}
         .weigher-btn.current{border-color:var(--success);background:rgba(74,222,128,0.15)}
+        .weigher-btn .claimer-tag{font-size:0.7rem;color:var(--text-dim);font-weight:600;display:block;margin-top:2px}
+        .weigher-divider{border:none;border-top:1px solid rgba(255,255,255,0.1);margin:4px 0}
+        .weigher-add-btn{padding:14px;border-radius:10px;border:2px solid var(--accent);background:rgba(155,89,182,0.15);color:var(--accent);font-family:inherit;font-size:1rem;font-weight:800;cursor:pointer;text-align:center;transition:all 0.15s}
+        .weigher-add-btn:active{background:rgba(155,89,182,0.3);transform:scale(0.97)}
+        .weigher-helper-count{font-size:0.8rem;color:var(--text-dim);margin-bottom:10px;font-weight:600}
 
-        /* MAKE TIMER */
+        /* HELPER CHECK-IN PIN MODAL */
+        .helper-pin-display{display:flex;gap:12px;margin:15px 0;justify-content:center}
+        .helper-pin-dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--accent);background:transparent;transition:all 0.15s}
+        .helper-pin-dot.filled{background:var(--accent);border-color:var(--accent)}
+        .helper-pin-dot.error{border-color:var(--danger);background:var(--danger)}
+        .helper-pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:240px;margin:0 auto}
+        .helper-pin-key{background:var(--bg);border:none;color:var(--text);font-size:1.3rem;font-weight:700;padding:14px;border-radius:10px;cursor:pointer;font-family:inherit;transition:all 0.1s}
+        .helper-pin-key:active{background:var(--accent);transform:scale(0.95)}
+        .helper-pin-key.backspace{font-size:1rem;color:var(--text-dim)}
+        .helper-pin-key.zero{grid-column:2}
+        .helper-pin-status{font-size:0.8rem;color:var(--warning);min-height:18px;margin:8px 0}
+
         .make-timer{font-size:1.4rem;font-weight:900;letter-spacing:1px;font-variant-numeric:tabular-nums;padding:4px 10px;border-radius:8px;background:rgba(0,0,0,0.2)}
 
-        /* ITEMS GRID */
         .items-scroll{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
         .section-label{grid-column:1 / -1;font-size:0.95rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px;display:flex;align-items:center;gap:8px}
         .section-label.weigh{color:var(--weigh-color)} .section-label.prep{color:var(--prep-color)}
@@ -161,7 +174,6 @@
         .complete-btn:disabled{opacity:0.4;cursor:not-allowed;background:var(--surface-light);color:var(--text-dim)}
         .work-item-sprinkles{font-size:1rem;color:#16a34a;font-weight:700;margin-top:4px}
 
-        /* MODALS */
         .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;z-index:200}
         .modal-overlay.show{display:flex}
         .modal-content{background:var(--surface);border-radius:16px;padding:25px;max-width:350px;width:90%;text-align:center}
@@ -178,7 +190,6 @@
         .skip-reason-btn{padding:12px;border-radius:10px;border:2px solid var(--surface-light);background:transparent;color:var(--text);font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;text-align:left}
         .skip-reason-btn.selected{border-color:var(--accent);background:rgba(155,89,182,0.2)}
 
-        /* TOAST */
         .toast{position:fixed;top:100px;left:50%;transform:translateX(-50%) translateY(-200px);background:var(--success);color:var(--bg);padding:15px 30px;border-radius:12px;font-weight:600;font-size:1.1rem;transition:transform 0.3s;z-index:300;white-space:nowrap;max-width:90%}
         .toast.error{background:var(--danger);color:white} .toast.show{transform:translateX(-50%) translateY(0)}
     </style>
@@ -193,35 +204,20 @@
         </div>
     </header>
 
-    <!-- PIN LOGIN -->
     <div class="login-screen" id="loginScreen">
         <div class="login-title" id="loginTitle">Enter Your PIN</div>
         <div class="login-subtitle" id="loginSubtitle">Use your Square PIN</div>
-        <div class="pin-display" id="pinDisplay">
-            <div class="pin-dot" id="dot0"></div>
-            <div class="pin-dot" id="dot1"></div>
-            <div class="pin-dot" id="dot2"></div>
-            <div class="pin-dot" id="dot3"></div>
-        </div>
+        <div class="pin-display" id="pinDisplay"><div class="pin-dot" id="dot0"></div><div class="pin-dot" id="dot1"></div><div class="pin-dot" id="dot2"></div><div class="pin-dot" id="dot3"></div></div>
         <div class="pin-status" id="pinStatus"></div>
         <div class="pin-pad" id="pinPad">
-            <button class="pin-key" data-key="1">1</button>
-            <button class="pin-key" data-key="2">2</button>
-            <button class="pin-key" data-key="3">3</button>
-            <button class="pin-key" data-key="4">4</button>
-            <button class="pin-key" data-key="5">5</button>
-            <button class="pin-key" data-key="6">6</button>
-            <button class="pin-key" data-key="7">7</button>
-            <button class="pin-key" data-key="8">8</button>
-            <button class="pin-key" data-key="9">9</button>
-            <button class="pin-key backspace" data-key="back">⌫</button>
-            <button class="pin-key zero" data-key="0">0</button>
-            <button class="pin-key backspace" data-key="clear">C</button>
+            <button class="pin-key" data-key="1">1</button><button class="pin-key" data-key="2">2</button><button class="pin-key" data-key="3">3</button>
+            <button class="pin-key" data-key="4">4</button><button class="pin-key" data-key="5">5</button><button class="pin-key" data-key="6">6</button>
+            <button class="pin-key" data-key="7">7</button><button class="pin-key" data-key="8">8</button><button class="pin-key" data-key="9">9</button>
+            <button class="pin-key backspace" data-key="back">⌫</button><button class="pin-key zero" data-key="0">0</button><button class="pin-key backspace" data-key="clear">C</button>
         </div>
         <button class="scale-connect-btn-login" id="loginScaleBtn">Connect Scale</button>
     </div>
 
-    <!-- NAME INPUT -->
     <div class="name-input-screen" id="nameInputScreen">
         <div class="login-title">Welcome! Enter Your Name</div>
         <div class="login-subtitle">This PIN hasn't been used before</div>
@@ -229,7 +225,6 @@
         <button class="name-submit-btn" id="nameSubmitBtn" disabled>REGISTER & START</button>
     </div>
 
-    <!-- CLAIM NEXT SCREEN -->
     <div class="claim-next-screen" id="claimNextScreen">
         <div class="queue-banner" id="queueBannerClaim"></div>
         <div class="tab-bar">
@@ -238,11 +233,7 @@
         </div>
         <div id="claimNextContent" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
             <div class="claim-next-body">
-                <div class="claim-next-empty" id="claimNextEmpty" style="display:none;">
-                    <div class="big-icon">🎉</div>
-                    <div>No orders in queue</div>
-                    <div style="font-size:0.85rem;margin-top:4px;opacity:0.7;">Waiting for the next one...</div>
-                </div>
+                <div class="claim-next-empty" id="claimNextEmpty" style="display:none;"><div class="big-icon">🎉</div><div>No orders in queue</div><div style="font-size:0.85rem;margin-top:4px;opacity:0.7;">Waiting for the next one...</div></div>
                 <button class="claim-next-btn" id="claimNextBtn" style="display:none;">⚡ Claim Next Order</button>
                 <div class="claim-next-msg" id="claimNextMsg"></div>
                 <div class="override-link" id="overrideLink" style="display:none;" onclick="openOverrideModal()">🔓 Take over another order (manager)</div>
@@ -254,15 +245,14 @@
         <div class="poll-status" id="pollStatus">Checking for orders...</div>
     </div>
 
-    <!-- ORDER WORK -->
     <div class="order-work-screen" id="orderWorkScreen">
         <div class="queue-banner" id="queueBannerWork"></div>
         <div class="work-header">
             <div class="work-header-top">
                 <span class="work-car" id="workCar"></span>
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <span class="make-timer" id="queueTimer" style="display:none;" title="Time since order was created"></span>
-                    <span class="make-timer" id="makeTimer" style="display:none;" title="Time since you claimed this order"></span>
+                    <span class="make-timer" id="queueTimer" style="display:none;"></span>
+                    <span class="make-timer" id="makeTimer" style="display:none;"></span>
                 </div>
             </div>
             <div class="work-meta" id="workMeta"></div>
@@ -272,7 +262,11 @@
         <div class="scale-bar" id="scaleBar">
             <div class="scale-weight"><span id="currentWeight">0.0</span><span class="unit"> oz</span></div>
             <div class="scale-feedback" id="scaleFeedback"></div>
-            <span class="weigher-badge is-claimer" id="weigherBadge" title="Tap to change who is weighing">⚖️ —</span>
+            <div class="weigher-wrapper" id="weigherWrapper" onclick="openWeigherModal()">
+                <span class="weigher-label">Who's scooping?</span>
+                <span class="weigher-badge is-claimer" id="weigherBadge">⚖️ — <span class="arrow">▼</span></span>
+            </div>
+            <button class="add-helper-btn" id="addHelperBtn" onclick="openHelperCheckinModal()">🤝 Check in as helper</button>
             <button class="scale-connect-btn" id="connectScaleBtn">Connect Scale</button>
             <button class="scale-reconnect-btn" id="reconnectScaleBtn" style="display:none;">⚠ Reconnect Scale</button>
         </div>
@@ -304,7 +298,7 @@
         <div class="modal-buttons"><button class="modal-btn secondary" id="skipCancelBtn">Go Back</button><button class="modal-btn primary" id="skipConfirmBtn" disabled>Complete Anyway</button></div>
     </div></div>
 
-    <!-- OVERRIDE TAKEOVER MODAL -->
+    <!-- OVERRIDE MODAL -->
     <div class="modal-overlay" id="overrideModal"><div class="modal-content">
         <div class="modal-icon">🔓</div>
         <div class="modal-title" style="color:var(--warning);">Take over an order</div>
@@ -316,10 +310,27 @@
     <!-- WEIGHER PICKER MODAL -->
     <div class="modal-overlay" id="weigherModal"><div class="modal-content">
         <div class="modal-icon">⚖️</div>
-        <div class="modal-title">Who is weighing?</div>
-        <div class="modal-message">Tap your name. Resets to claimer after each weigh.</div>
+        <div class="modal-title">Who's scooping?</div>
+        <div class="modal-message">Tap your name. Resets to claimer after each item.</div>
+        <div class="weigher-helper-count" id="helperCount"></div>
         <div class="weigher-list" id="weigherList"></div>
         <div class="modal-buttons"><button class="modal-btn secondary" id="weigherCancelBtn">Cancel</button></div>
+    </div></div>
+
+    <!-- HELPER CHECK-IN PIN MODAL -->
+    <div class="modal-overlay" id="helperCheckinModal"><div class="modal-content">
+        <div class="modal-icon">🤝</div>
+        <div class="modal-title">Check in as helper</div>
+        <div class="modal-message">Enter your PIN to join this station for the shift.</div>
+        <div class="helper-pin-display"><div class="helper-pin-dot" id="hDot0"></div><div class="helper-pin-dot" id="hDot1"></div><div class="helper-pin-dot" id="hDot2"></div><div class="helper-pin-dot" id="hDot3"></div></div>
+        <div class="helper-pin-status" id="helperPinStatus"></div>
+        <div class="helper-pin-pad" id="helperPinPad">
+            <button class="helper-pin-key" data-key="1">1</button><button class="helper-pin-key" data-key="2">2</button><button class="helper-pin-key" data-key="3">3</button>
+            <button class="helper-pin-key" data-key="4">4</button><button class="helper-pin-key" data-key="5">5</button><button class="helper-pin-key" data-key="6">6</button>
+            <button class="helper-pin-key" data-key="7">7</button><button class="helper-pin-key" data-key="8">8</button><button class="helper-pin-key" data-key="9">9</button>
+            <button class="helper-pin-key backspace" data-key="back">⌫</button><button class="helper-pin-key zero" data-key="0">0</button><button class="helper-pin-key backspace" data-key="clear">C</button>
+        </div>
+        <div class="modal-buttons"><button class="modal-btn secondary" id="helperCheckinCancel">Cancel</button></div>
     </div></div>
 
     <div class="toast" id="toast"></div>
@@ -334,30 +345,18 @@ const SCALE_DATA_TIMEOUT=10000;
 const SCALE_WATCHDOG_INTERVAL=2000;
 const OVERRIDE_EMPLOYEES=['EMP-1224','EMP-2309','EMP-7112','EMP-6982','EMP-4372','EMP-3667'];
 
-const PRIORITY_SKUS = [
-    'RGSUNDAE','LGSUN','BANSPL',
-    'SMSHAKE','RGSHAKE','KIDSSHAKE',
-    'BOMBCYC','BOMBCYC-RG',
-    'SNOWDRFT','SNOWDRFT-RG',
-    'POLARVX','POLARVX-RG',
-    'FRSTBITE','FRSTBITE-RG',
-    'AVALNCH','AVALNCH-RG'
-];
-function isPriorityItem(item) {
-    return item && item.sku && PRIORITY_SKUS.indexOf(String(item.sku).toUpperCase()) !== -1;
-}
+const PRIORITY_SKUS=['RGSUNDAE','LGSUN','BANSPL','SMSHAKE','RGSHAKE','KIDSSHAKE','BOMBCYC','BOMBCYC-RG','SNOWDRFT','SNOWDRFT-RG','POLARVX','POLARVX-RG','FRSTBITE','FRSTBITE-RG','AVALNCH','AVALNCH-RG'];
+function isPriorityItem(item){return item&&item.sku&&PRIORITY_SKUS.indexOf(String(item.sku).toUpperCase())!==-1;}
 
 let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null,claiming=false;
 let scaleState='disconnected',lastDataReceived=0,scaleWatchdogTimer=null,scaleVerifyTimer=null,scaleReconnecting=false;
 let activeTab='claimNext';
-let makeTimerInterval=null;
-let orderClaimedAt=null;
-let orderCompletedAt=null;
+let makeTimerInterval=null,orderClaimedAt=null,orderCompletedAt=null;
 let queueStatus={priority_count:0,queue_count:0,oldest_queue_age_ms:0};
 
-// ===== WEIGHER PICKER STATE =====
-let activeEmployees=[];   // [{employee_id, name}, ...] fetched once on login
-let currentWeigher=null;  // {id, name} — who the next weigh will be attributed to
+// ===== HELPER CHECK-IN STATE =====
+let checkedInHelpers=[];  // [{employee_id, name}, ...] — fetched from backend, shared across stations
+let currentWeigher=null;  // {id, name} — who the next item will be attributed to
 
 const $=id=>document.getElementById(id);
 function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
@@ -366,724 +365,206 @@ function showToast(msg,err=false){const t=$('toast');t.textContent=msg;t.classNa
 async function apiGet(action,params={}){const url=new URL(API_BASE);url.searchParams.set('action',action);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));const r=await fetch(url.toString(),{redirect:'follow'});return r.json();}
 async function apiPost(action,body){const r=await fetch(API_BASE+'?action='+action,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),redirect:'follow'});return r.json();}
 
-// ===== WEIGHER PICKER =====
-function resetWeigherToClaimer() {
-    if (!currentEmployee) return;
-    currentWeigher = { id: currentEmployee.id, name: currentEmployee.name };
+// ===== WEIGHER PICKER (WHO'S SCOOPING?) =====
+function resetWeigherToClaimer(){
+    if(!currentEmployee)return;
+    currentWeigher={id:currentEmployee.id,name:currentEmployee.name};
     updateWeigherBadge();
 }
-
-function updateWeigherBadge() {
-    const badge = $('weigherBadge');
-    if (!currentWeigher || !currentEmployee) { badge.textContent = '⚖️ —'; return; }
-    const isClaimer = currentWeigher.id === currentEmployee.id;
-    badge.className = 'weigher-badge ' + (isClaimer ? 'is-claimer' : 'is-helper');
-    badge.textContent = '⚖️ ' + currentWeigher.name;
+function updateWeigherBadge(){
+    const badge=$('weigherBadge');
+    if(!currentWeigher||!currentEmployee){badge.innerHTML='⚖️ — <span class="arrow">▼</span>';return;}
+    const isClaimer=currentWeigher.id===currentEmployee.id;
+    badge.className='weigher-badge '+(isClaimer?'is-claimer':'is-helper');
+    badge.innerHTML='⚖️ '+esc(currentWeigher.name)+' <span class="arrow">▼</span>';
 }
-
-$('weigherBadge').addEventListener('click', () => {
-    if (!activeEmployees.length) { showToast('Employee list not loaded', true); return; }
-    const list = $('weigherList');
-    let h = '';
-    activeEmployees.forEach(emp => {
-        const isCurrent = currentWeigher && emp.employee_id === currentWeigher.id;
-        h += '<button class="weigher-btn' + (isCurrent ? ' current' : '') + '" data-eid="' + esc(emp.employee_id) + '" data-ename="' + esc(emp.name) + '">';
-        h += esc(emp.name);
-        if (isCurrent) h += ' ✓';
-        h += '</button>';
-    });
-    list.innerHTML = h;
-    list.querySelectorAll('.weigher-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            currentWeigher = { id: btn.dataset.eid, name: btn.dataset.ename };
+function openWeigherModal(){
+    const list=$('weigherList');
+    const countEl=$('helperCount');
+    let h='';
+    // Claimer always first
+    const claimerCurrent=currentWeigher&&currentWeigher.id===currentEmployee.id;
+    h+='<button class="weigher-btn'+(claimerCurrent?' current':'')+'" data-eid="'+esc(currentEmployee.id)+'" data-ename="'+esc(currentEmployee.name)+'">';
+    h+=esc(currentEmployee.name)+(claimerCurrent?' ✓':'');
+    h+='<span class="claimer-tag">claimer</span></button>';
+    if(checkedInHelpers.length){
+        h+='<hr class="weigher-divider">';
+        checkedInHelpers.forEach(emp=>{
+            const isCurrent=currentWeigher&&emp.employee_id===currentWeigher.id;
+            h+='<button class="weigher-btn'+(isCurrent?' current':'')+'" data-eid="'+esc(emp.employee_id)+'" data-ename="'+esc(emp.name)+'">';
+            h+=esc(emp.name)+(isCurrent?' ✓':'');
+            h+='</button>';
+        });
+        countEl.textContent=checkedInHelpers.length+' helper'+(checkedInHelpers.length>1?'s':'')+' checked in';
+    } else {
+        countEl.textContent='No helpers checked in yet';
+    }
+    h+='<button class="weigher-add-btn" id="weigherAddBtn">🤝 Check in as helper</button>';
+    list.innerHTML=h;
+    list.querySelectorAll('.weigher-btn').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+            currentWeigher={id:btn.dataset.eid,name:btn.dataset.ename};
             updateWeigherBadge();
             $('weigherModal').classList.remove('show');
-            const isClaimer = currentWeigher.id === currentEmployee.id;
-            if (!isClaimer) showToast('⚖️ Weighing as ' + currentWeigher.name);
+            if(currentWeigher.id!==currentEmployee.id)showToast('⚖️ Scooping as '+currentWeigher.name);
         });
     });
+    const addBtn=$('weigherAddBtn');
+    if(addBtn)addBtn.addEventListener('click',()=>{$('weigherModal').classList.remove('show');openHelperCheckinModal();});
     $('weigherModal').classList.add('show');
-});
-$('weigherCancelBtn').addEventListener('click', () => { $('weigherModal').classList.remove('show'); });
+}
+$('weigherCancelBtn').addEventListener('click',()=>{$('weigherModal').classList.remove('show');});
 
-async function fetchActiveEmployees() {
-    try {
-        const result = await apiGet('getactiveemployees');
-        if (Array.isArray(result) && result.length) {
-            activeEmployees = result;
+// ===== HELPER CHECK-IN =====
+let helperPin='';
+function openHelperCheckinModal(){
+    helperPin='';updateHelperDots();$('helperPinStatus').textContent='';
+    $('helperCheckinModal').classList.add('show');
+}
+$('helperCheckinCancel').addEventListener('click',()=>{$('helperCheckinModal').classList.remove('show');});
+function updateHelperDots(){for(let i=0;i<4;i++)$('hDot'+i).className='helper-pin-dot'+(i<helperPin.length?' filled':'');}
+function showHelperPinError(msg){
+    for(let i=0;i<4;i++)$('hDot'+i).className='helper-pin-dot error';
+    $('helperPinStatus').textContent=msg||'Invalid PIN';
+    setTimeout(()=>{helperPin='';updateHelperDots();},600);
+}
+$('helperPinPad').addEventListener('click',e=>{
+    const key=e.target.dataset.key;if(!key)return;
+    if(key==='back'){helperPin=helperPin.slice(0,-1);updateHelperDots();return;}
+    if(key==='clear'){helperPin='';updateHelperDots();$('helperPinStatus').textContent='';return;}
+    if(helperPin.length>=4)return;
+    helperPin+=key;updateHelperDots();
+    if(helperPin.length===4)handleHelperPin();
+});
+async function handleHelperPin(){
+    $('helperPinStatus').textContent='Checking...';
+    try{
+        const result=await apiGet('pinlookup',{pin:helperPin});
+        if(!result.found){showHelperPinError('PIN not found');return;}
+        if(result.employee_id===currentEmployee.id){showHelperPinError('You are already the claimer!');return;}
+        if(checkedInHelpers.find(h=>h.employee_id===result.employee_id)){
+            $('helperCheckinModal').classList.remove('show');
+            showToast(result.name+' is already checked in');return;
         }
-    } catch(e) {
-        console.log('Failed to fetch active employees:', e.message);
-    }
+        // Register on backend
+        const checkin=await apiPost('helpercheckin',{employee_id:result.employee_id,name:result.name,location:LOCATION});
+        if(checkin.success){
+            $('helperCheckinModal').classList.remove('show');
+            showToast('🤝 '+result.name+' checked in as helper!');
+            fetchHelpers();
+        } else {showHelperPinError(checkin.error||'Check-in failed');}
+    }catch(e){showHelperPinError('Connection error');}
+}
+async function fetchHelpers(){
+    try{
+        const result=await apiGet('gethelpers',{location:LOCATION});
+        if(Array.isArray(result))checkedInHelpers=result;
+    }catch(e){}
 }
 
 // ===== MAKE TIMER =====
-function formatMakeTime(claimedAt, completedAt) {
-    if (!claimedAt) return '';
-    const end = completedAt ? new Date(completedAt).getTime() : Date.now();
-    const s = Math.floor((end - new Date(claimedAt).getTime()) / 1000);
-    if (s < 0) return '0:00';
-    return Math.floor(s / 60) + ':' + (s % 60).toString().padStart(2, '0');
-}
-
-function getMakeTimeColor(claimedAt, completedAt) {
-    if (!claimedAt) return 'var(--success)';
-    if (completedAt) return 'var(--text-dim)';
-    const s = Math.floor((Date.now() - new Date(claimedAt).getTime()) / 1000);
-    if (s >= 300) return '#ef4444';
-    if (s >= 180) return '#f59e0b';
-    return 'var(--success)';
-}
-
-function startMakeTimer(claimedAt) {
-    stopMakeTimer();
-    orderClaimedAt = claimedAt;
-    orderCompletedAt = null;
-    const timerEl = $('makeTimer');
-    const queueEl = $('queueTimer');
-    timerEl.style.display = 'inline-block';
-    const createdAt = activeOrder && activeOrder.created_at;
-    if (queueEl) { queueEl.style.display = createdAt ? 'inline-block' : 'none'; }
-    function update() {
-        timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt);
-        timerEl.style.color = getMakeTimeColor(orderClaimedAt, orderCompletedAt);
-        if (queueEl && createdAt) {
-            queueEl.textContent = '👥 ' + formatMakeTime(createdAt, orderCompletedAt);
-            queueEl.style.color = getMakeTimeColor(createdAt, orderCompletedAt);
-        }
-    }
-    update();
-    makeTimerInterval = setInterval(update, 1000);
-}
-
-function stopMakeTimer(completedAt) {
-    if (makeTimerInterval) { clearInterval(makeTimerInterval); makeTimerInterval = null; }
-    if (completedAt) {
-        orderCompletedAt = completedAt;
-        const timerEl = $('makeTimer');
-        const queueEl = $('queueTimer');
-        if (timerEl) { timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt); timerEl.style.color = 'var(--text-dim)'; }
-        if (queueEl && activeOrder && activeOrder.created_at) { queueEl.textContent = '👥 ' + formatMakeTime(activeOrder.created_at, orderCompletedAt); queueEl.style.color = 'var(--text-dim)'; }
-    }
-}
+function formatMakeTime(claimedAt,completedAt){if(!claimedAt)return '';const end=completedAt?new Date(completedAt).getTime():Date.now();const s=Math.floor((end-new Date(claimedAt).getTime())/1000);if(s<0)return '0:00';return Math.floor(s/60)+':'+(s%60).toString().padStart(2,'0');}
+function getMakeTimeColor(claimedAt,completedAt){if(!claimedAt)return 'var(--success)';if(completedAt)return 'var(--text-dim)';const s=Math.floor((Date.now()-new Date(claimedAt).getTime())/1000);if(s>=300)return '#ef4444';if(s>=180)return '#f59e0b';return 'var(--success)';}
+function startMakeTimer(claimedAt){stopMakeTimer();orderClaimedAt=claimedAt;orderCompletedAt=null;const timerEl=$('makeTimer'),queueEl=$('queueTimer');timerEl.style.display='inline-block';const createdAt=activeOrder&&activeOrder.created_at;if(queueEl)queueEl.style.display=createdAt?'inline-block':'none';function update(){timerEl.textContent='⏱ '+formatMakeTime(orderClaimedAt,orderCompletedAt);timerEl.style.color=getMakeTimeColor(orderClaimedAt,orderCompletedAt);if(queueEl&&createdAt){queueEl.textContent='👥 '+formatMakeTime(createdAt,orderCompletedAt);queueEl.style.color=getMakeTimeColor(createdAt,orderCompletedAt);}}update();makeTimerInterval=setInterval(update,1000);}
+function stopMakeTimer(completedAt){if(makeTimerInterval){clearInterval(makeTimerInterval);makeTimerInterval=null;}if(completedAt){orderCompletedAt=completedAt;const timerEl=$('makeTimer'),queueEl=$('queueTimer');if(timerEl){timerEl.textContent='⏱ '+formatMakeTime(orderClaimedAt,orderCompletedAt);timerEl.style.color='var(--text-dim)';}if(queueEl&&activeOrder&&activeOrder.created_at){queueEl.textContent='👥 '+formatMakeTime(activeOrder.created_at,orderCompletedAt);queueEl.style.color='var(--text-dim)';}}}
 
 // ===== QUEUE BANNER =====
-function formatAge(ms) {
-    if (!ms || ms < 60000) return 'just now';
-    const m = Math.floor(ms / 60000);
-    if (m < 60) return m + 'm';
-    return Math.floor(m/60) + 'h ' + (m%60) + 'm';
-}
-
-function renderQueueBanners() {
-    const toClaim = queueStatus.queue_count || 0;
-    const making  = queueStatus.priority_count || 0;
-    const ready   = queueStatus.ready_count || 0;
-    const total   = toClaim + making + ready;
-    const age     = queueStatus.oldest_queue_age_ms || 0;
-    let cls = '', txt = '', show = true;
-    if (total === 0) { show = false; } else {
-        const parts = [];
-        if (toClaim > 0) parts.push(toClaim + ' to claim');
-        if (making  > 0) parts.push(making  + ' making');
-        if (ready   > 0) parts.push(ready   + ' ready');
-        const body = parts.join(' • ');
-        if (total <= 2) { cls = 'calm'; txt = '📋 ' + body; }
-        else if (total <= 5) { cls = 'warn'; txt = '⚠️ ' + body + ' — please hustle'; }
-        else { cls = 'alert'; txt = '🚨 ' + body.toUpperCase() + ' — BACKUP BUILDING'; }
-    }
-    const ageLine = (show && age > 60000) ? '<div class="queue-banner-age">Oldest: ' + formatAge(age) + '</div>' : '';
-    ['queueBannerClaim','queueBannerWork'].forEach(id => {
-        const el = $(id); if (!el) return;
-        el.className = 'queue-banner' + (show ? (' show ' + cls) : '');
-        el.innerHTML = show ? (txt + ageLine) : '';
-    });
-}
+function formatAge(ms){if(!ms||ms<60000)return 'just now';const m=Math.floor(ms/60000);if(m<60)return m+'m';return Math.floor(m/60)+'h '+(m%60)+'m';}
+function renderQueueBanners(){const toClaim=queueStatus.queue_count||0,making=queueStatus.priority_count||0,ready=queueStatus.ready_count||0,total=toClaim+making+ready,age=queueStatus.oldest_queue_age_ms||0;let cls='',txt='',show=true;if(total===0){show=false;}else{const parts=[];if(toClaim>0)parts.push(toClaim+' to claim');if(making>0)parts.push(making+' making');if(ready>0)parts.push(ready+' ready');const body=parts.join(' • ');if(total<=2){cls='calm';txt='📋 '+body;}else if(total<=5){cls='warn';txt='⚠️ '+body+' — please hustle';}else{cls='alert';txt='🚨 '+body.toUpperCase()+' — BACKUP BUILDING';}}const ageLine=(show&&age>60000)?'<div class="queue-banner-age">Oldest: '+formatAge(age)+'</div>':'';['queueBannerClaim','queueBannerWork'].forEach(id=>{const el=$(id);if(!el)return;el.className='queue-banner'+(show?(' show '+cls):'');el.innerHTML=show?(txt+ageLine):'';});}
 
 // ===== SCALE STATE MACHINE =====
-function setScaleState(newState){
-    scaleState=newState;
-    const ind=$('scaleIndicator'),connectBtn=$('connectScaleBtn'),reconnectBtn=$('reconnectScaleBtn'),loginBtn=$('loginScaleBtn');
-    switch(newState){
-        case 'disconnected':
-            ind.textContent='No Scale';ind.className='scale-indicator';
-            connectBtn.style.display='block';connectBtn.textContent='Connect Scale';
-            reconnectBtn.style.display='none';loginBtn.textContent='Connect Scale';loginBtn.disabled=false;break;
-        case 'connecting':
-            ind.textContent='⏳ Connecting...';ind.className='scale-indicator';
-            connectBtn.style.display='none';reconnectBtn.style.display='none';
-            loginBtn.textContent='Connecting...';loginBtn.disabled=true;break;
-        case 'verifying':
-            ind.textContent='⏳ Verifying...';ind.className='scale-indicator stale';
-            connectBtn.style.display='none';reconnectBtn.style.display='none';break;
-        case 'live':
-            ind.textContent='⚖️ Scale OK';ind.className='scale-indicator connected';
-            connectBtn.style.display='none';reconnectBtn.style.display='none';
-            loginBtn.textContent='✓ Scale Connected';loginBtn.disabled=true;break;
-        case 'stale':
-            ind.textContent='⚠ Scale Lost — Tap Here';ind.className='scale-indicator dead';
-            connectBtn.style.display='none';reconnectBtn.style.display='block';
-            loginBtn.textContent='⚠ Reconnect Scale';loginBtn.disabled=false;break;
-    }
-}
-
+function setScaleState(newState){scaleState=newState;const ind=$('scaleIndicator'),connectBtn=$('connectScaleBtn'),reconnectBtn=$('reconnectScaleBtn'),loginBtn=$('loginScaleBtn');switch(newState){case 'disconnected':ind.textContent='No Scale';ind.className='scale-indicator';connectBtn.style.display='block';reconnectBtn.style.display='none';loginBtn.textContent='Connect Scale';loginBtn.disabled=false;break;case 'connecting':ind.textContent='⏳ Connecting...';ind.className='scale-indicator';connectBtn.style.display='none';reconnectBtn.style.display='none';loginBtn.textContent='Connecting...';loginBtn.disabled=true;break;case 'verifying':ind.textContent='⏳ Verifying...';ind.className='scale-indicator stale';connectBtn.style.display='none';reconnectBtn.style.display='none';break;case 'live':ind.textContent='⚖️ Scale OK';ind.className='scale-indicator connected';connectBtn.style.display='none';reconnectBtn.style.display='none';loginBtn.textContent='✓ Scale Connected';loginBtn.disabled=true;break;case 'stale':ind.textContent='⚠ Scale Lost — Tap Here';ind.className='scale-indicator dead';connectBtn.style.display='none';reconnectBtn.style.display='block';loginBtn.textContent='⚠ Reconnect Scale';loginBtn.disabled=false;break;}}
 $('scaleIndicator').addEventListener('click',()=>{if(scaleState==='stale'||scaleState==='disconnected')forceReconnectScale();});
-
-function startScaleWatchdog(){
-    stopScaleWatchdog();
-    scaleWatchdogTimer=setInterval(()=>{
-        if(scaleState==='live'){const e=Date.now()-lastDataReceived;if(e>SCALE_DATA_TIMEOUT){setScaleState('stale');showToast('Scale lost — tap Reconnect',true);}}
-    },SCALE_WATCHDOG_INTERVAL);
-}
-function stopScaleWatchdog(){
-    if(scaleWatchdogTimer){clearInterval(scaleWatchdogTimer);scaleWatchdogTimer=null;}
-    if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}
-}
-
+function startScaleWatchdog(){stopScaleWatchdog();scaleWatchdogTimer=setInterval(()=>{if(scaleState==='live'){if(Date.now()-lastDataReceived>SCALE_DATA_TIMEOUT){setScaleState('stale');showToast('Scale lost — tap Reconnect',true);}}},SCALE_WATCHDOG_INTERVAL);}
+function stopScaleWatchdog(){if(scaleWatchdogTimer){clearInterval(scaleWatchdogTimer);scaleWatchdogTimer=null;}if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}}
 $('loginScaleBtn').addEventListener('click',()=>{if(scaleState==='stale')forceReconnectScale();else connectScale();});
 $('connectScaleBtn').addEventListener('click',connectScale);
 $('reconnectScaleBtn').addEventListener('click',forceReconnectScale);
-
-async function connectScale(){
-    try{setScaleState('connecting');const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
-    if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');return;}await openScale(devs[0]);}
-    catch(e){showToast('Scale error: '+e.message,true);setScaleState('disconnected');}
-}
-async function forceReconnectScale(){
-    if(scaleReconnecting)return;scaleReconnecting=true;
-    if(scaleDevice){try{scaleDevice.removeEventListener('inputreport',handleScaleInput);scaleDevice.removeEventListener('close',onScaleDisconnect);if(scaleDevice.opened)await scaleDevice.close();}catch(e){}scaleDevice=null;}
-    setScaleState('connecting');currentWeight=0;$('currentWeight').textContent='0.0';
-    await new Promise(r=>setTimeout(r,500));
-    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s){await openScale(s);scaleReconnecting=false;return;}}catch(e){}
-    try{const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
-    if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');scaleReconnecting=false;return;}await openScale(devs[0]);}
-    catch(e){showToast('Reconnect failed: '+e.message,true);setScaleState('disconnected');}
-    scaleReconnecting=false;
-}
-async function openScale(device){
-    try{
-        scaleDevice=device;
-        if(scaleDevice.opened){try{await scaleDevice.close();}catch(e){}await new Promise(r=>setTimeout(r,500));}
-        await scaleDevice.open();
-        try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e){}
-        try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e){}
-        scaleDevice.addEventListener('inputreport',handleScaleInput);
-        scaleDevice.addEventListener('close',onScaleDisconnect);
-        setScaleState('verifying');
-        if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);
-        scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);
-        startScaleWatchdog();
-    }catch(e){
-        showToast('Scale open failed: '+e.message,true);
-        await new Promise(r=>setTimeout(r,2000));
-        try{if(!scaleDevice.opened)await scaleDevice.open();
-        try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e2){}
-        try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e2){}
-        scaleDevice.addEventListener('inputreport',handleScaleInput);scaleDevice.addEventListener('close',onScaleDisconnect);
-        setScaleState('verifying');
-        if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);
-        scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);
-        startScaleWatchdog();}catch(e2){showToast('Scale failed: '+e2.message,true);setScaleState('disconnected');}
-    }
-}
-function onScaleDisconnect(){
-    setScaleState('stale');showToast('Scale disconnected — tap Reconnect',true);
-    setTimeout(async()=>{if(scaleState!=='stale')return;try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}},3000);
-}
-function handleScaleInput(event){
-    const b=new Uint8Array(event.data.buffer);lastDataReceived=Date.now();
-    if(scaleState==='verifying'){if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}setScaleState('live');showToast('Scale connected!');}
-    if(scaleState==='stale'){setScaleState('live');showToast('Scale reconnected!');}
-    if(b.length>=5){const uc=b[1],exp=b[2]>127?b[2]-256:b[2],wr=b[3]+(b[4]<<8);let w=wr*Math.pow(10,exp);if(uc===2)w*=0.035274;currentWeight=w;$('currentWeight').textContent=w.toFixed(1);}
-}
-async function autoConnectScale(){
-    if(!navigator.hid)return;
-    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}
-}
-if(navigator.hid){
-    navigator.hid.addEventListener('connect',async(e)=>{if(e.device.vendorId===0x0922||e.device.vendorId===0x1446){await new Promise(r=>setTimeout(r,1000));await openScale(e.device);}});
-    navigator.hid.addEventListener('disconnect',(e)=>{if(scaleDevice&&e.device===scaleDevice)onScaleDisconnect();});
-}
+async function connectScale(){try{setScaleState('connecting');const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');return;}await openScale(devs[0]);}catch(e){showToast('Scale error: '+e.message,true);setScaleState('disconnected');}}
+async function forceReconnectScale(){if(scaleReconnecting)return;scaleReconnecting=true;if(scaleDevice){try{scaleDevice.removeEventListener('inputreport',handleScaleInput);scaleDevice.removeEventListener('close',onScaleDisconnect);if(scaleDevice.opened)await scaleDevice.close();}catch(e){}scaleDevice=null;}setScaleState('connecting');currentWeight=0;$('currentWeight').textContent='0.0';await new Promise(r=>setTimeout(r,500));try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s){await openScale(s);scaleReconnecting=false;return;}}catch(e){}try{const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');scaleReconnecting=false;return;}await openScale(devs[0]);}catch(e){showToast('Reconnect failed: '+e.message,true);setScaleState('disconnected');}scaleReconnecting=false;}
+async function openScale(device){try{scaleDevice=device;if(scaleDevice.opened){try{await scaleDevice.close();}catch(e){}await new Promise(r=>setTimeout(r,500));}await scaleDevice.open();try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e){}try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e){}scaleDevice.addEventListener('inputreport',handleScaleInput);scaleDevice.addEventListener('close',onScaleDisconnect);setScaleState('verifying');if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);startScaleWatchdog();}catch(e){showToast('Scale open failed: '+e.message,true);await new Promise(r=>setTimeout(r,2000));try{if(!scaleDevice.opened)await scaleDevice.open();try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e2){}try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e2){}scaleDevice.addEventListener('inputreport',handleScaleInput);scaleDevice.addEventListener('close',onScaleDisconnect);setScaleState('verifying');if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);startScaleWatchdog();}catch(e2){showToast('Scale failed: '+e2.message,true);setScaleState('disconnected');}}}
+function onScaleDisconnect(){setScaleState('stale');showToast('Scale disconnected — tap Reconnect',true);setTimeout(async()=>{if(scaleState!=='stale')return;try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}},3000);}
+function handleScaleInput(event){const b=new Uint8Array(event.data.buffer);lastDataReceived=Date.now();if(scaleState==='verifying'){if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}setScaleState('live');showToast('Scale connected!');}if(scaleState==='stale'){setScaleState('live');showToast('Scale reconnected!');}if(b.length>=5){const uc=b[1],exp=b[2]>127?b[2]-256:b[2],wr=b[3]+(b[4]<<8);let w=wr*Math.pow(10,exp);if(uc===2)w*=0.035274;currentWeight=w;$('currentWeight').textContent=w.toFixed(1);}}
+async function autoConnectScale(){if(!navigator.hid)return;try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}}
+if(navigator.hid){navigator.hid.addEventListener('connect',async(e)=>{if(e.device.vendorId===0x0922||e.device.vendorId===0x1446){await new Promise(r=>setTimeout(r,1000));await openScale(e.device);}});navigator.hid.addEventListener('disconnect',(e)=>{if(scaleDevice&&e.device===scaleDevice)onScaleDisconnect();});}
 
 // ===== PIN LOGIN =====
 let pinEntry='',pinMode='login',pendingPin='';
-$('pinPad').addEventListener('click',e=>{
-    const key=e.target.dataset.key;if(!key)return;
-    if(key==='back'){pinEntry=pinEntry.slice(0,-1);updatePinDots();return;}
-    if(key==='clear'){pinEntry='';updatePinDots();$('pinStatus').textContent='';return;}
-    if(pinEntry.length>=4)return;pinEntry+=key;updatePinDots();if(pinEntry.length===4)handlePinComplete();
-});
+$('pinPad').addEventListener('click',e=>{const key=e.target.dataset.key;if(!key)return;if(key==='back'){pinEntry=pinEntry.slice(0,-1);updatePinDots();return;}if(key==='clear'){pinEntry='';updatePinDots();$('pinStatus').textContent='';return;}if(pinEntry.length>=4)return;pinEntry+=key;updatePinDots();if(pinEntry.length===4)handlePinComplete();});
 function updatePinDots(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot'+(i<pinEntry.length?' filled':'');}
 function showPinError(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot error';setTimeout(()=>{pinEntry='';updatePinDots();},600);}
-async function handlePinComplete(){
-    $('pinStatus').textContent='Checking...';
-    try{
-        const result=await apiGet('pinlookup',{pin:pinEntry});
-        if(result.found){loginEmployee(result);}
-        else{$('pinStatus').textContent='Incorrect PIN — try again. New users must register on the order tablet first.';showPinError();}
-    }
-    catch(e){$('pinStatus').textContent='Connection error';showPinError();}
-}
+async function handlePinComplete(){$('pinStatus').textContent='Checking...';try{const result=await apiGet('pinlookup',{pin:pinEntry});if(result.found){loginEmployee(result);}else{$('pinStatus').textContent='Incorrect PIN — try again. New users must register on the order tablet first.';showPinError();}}catch(e){$('pinStatus').textContent='Connection error';showPinError();}}
 $('nameInput').addEventListener('input',()=>{$('nameSubmitBtn').disabled=$('nameInput').value.trim().length<2;});
 $('nameInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('nameSubmitBtn').disabled)registerEmployee();});
 $('nameSubmitBtn').addEventListener('click',registerEmployee);
-async function registerEmployee(){
-    const name=$('nameInput').value.trim();if(name.length<2)return;
-    $('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='Registering...';
-    try{const result=await apiPost('pinregister',{pin:pendingPin,name:name});
-    if(result.success){loginEmployee({name:result.name,employee_id:result.employee_id});}
-    else{showToast(result.error||'Registration failed',true);resetLogin();}}
-    catch(e){showToast('Connection error',true);resetLogin();}
-}
+async function registerEmployee(){const name=$('nameInput').value.trim();if(name.length<2)return;$('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='Registering...';try{const result=await apiPost('pinregister',{pin:pendingPin,name:name});if(result.success){loginEmployee({name:result.name,employee_id:result.employee_id});}else{showToast(result.error||'Registration failed',true);resetLogin();}}catch(e){showToast('Connection error',true);resetLogin();}}
 function loginEmployee(emp){
     currentEmployee={id:emp.employee_id,name:emp.name};
     $('loginScreen').style.display='none';$('nameInputScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
     $('employeeBadge').textContent=currentEmployee.name;$('employeeBadge').style.display='inline-block';$('logoutBtn').style.display='inline-block';
     $('pinStatus').textContent='';showToast('Welcome, '+currentEmployee.name+'!');
-    if (OVERRIDE_EMPLOYEES.indexOf(currentEmployee.id) !== -1) {
-        $('overrideLink').style.display = 'block';
-    }
-    // Fetch active employees for the weigher picker
-    fetchActiveEmployees();
+    if(OVERRIDE_EMPLOYEES.indexOf(currentEmployee.id)!==-1)$('overrideLink').style.display='block';
+    fetchHelpers();
     resetWeigherToClaimer();
     startPolling();
     tryResumeActiveOrder();
 }
 
-async function tryResumeActiveOrder(){
-    try {
-        const r = await apiGet('getactiveorderforemployee', { location: LOCATION, employee_name: currentEmployee.name });
-        if (!r || !r.success || !r.order) return;
-        const o = r.order;
-        activeOrder = {
-            order_id: o.order_id, items: o.items || [], car_name: o.car_name || '',
-            notes: o.notes || '', payment_type: o.payment_type || '',
-            order_type: o.order_type || 'DRIVE-THRU', claimed_by: currentEmployee.name,
-            claimed_at: o.claimed_at || new Date().toISOString(), created_at: o.created_at || null
-        };
-        const saved = Array.isArray(o.item_progress) ? o.item_progress : [];
-        const savedByIdx = {};
-        saved.forEach(p => { if (typeof p.idx === 'number') savedByIdx[p.idx] = p; });
-        workItems = activeOrder.items.map((item, idx) => {
-            const base = {...item, idx, done:false, weightOz:null, skipped:false, skipReason:null, weighedById:null, weighedByName:null};
-            const s = savedByIdx[idx];
-            if (s) {
-                base.done = !!s.done;
-                base.weightOz = (typeof s.weight_oz === 'number') ? s.weight_oz : null;
-                base.skipped = !!s.skipped;
-                base.skipReason = s.skip_reason || null;
-                base.weighedById = s.weighed_by_id || null;
-                base.weighedByName = s.weighed_by_name || null;
-            }
-            return base;
-        });
-        showWorkScreen();
-        startMakeTimer(activeOrder.claimed_at);
-        showToast('Resumed '+activeOrder.order_id);
-    } catch(e) {}
-}
+async function tryResumeActiveOrder(){try{const r=await apiGet('getactiveorderforemployee',{location:LOCATION,employee_name:currentEmployee.name});if(!r||!r.success||!r.order)return;const o=r.order;activeOrder={order_id:o.order_id,items:o.items||[],car_name:o.car_name||'',notes:o.notes||'',payment_type:o.payment_type||'',order_type:o.order_type||'DRIVE-THRU',claimed_by:currentEmployee.name,claimed_at:o.claimed_at||new Date().toISOString(),created_at:o.created_at||null};const saved=Array.isArray(o.item_progress)?o.item_progress:[];const savedByIdx={};saved.forEach(p=>{if(typeof p.idx==='number')savedByIdx[p.idx]=p;});workItems=activeOrder.items.map((item,idx)=>{const base={...item,idx,done:false,weightOz:null,skipped:false,skipReason:null,weighedById:null,weighedByName:null};const s=savedByIdx[idx];if(s){base.done=!!s.done;base.weightOz=(typeof s.weight_oz==='number')?s.weight_oz:null;base.skipped=!!s.skipped;base.skipReason=s.skip_reason||null;base.weighedById=s.weighed_by_id||null;base.weighedByName=s.weighed_by_name||null;}return base;});showWorkScreen();startMakeTimer(activeOrder.claimed_at);showToast('Resumed '+activeOrder.order_id);}catch(e){}}
 
 let _saveProgressTimer=null;
-function saveProgressDebounced(){
-    if (!activeOrder || !activeOrder.order_id) return;
-    if (_saveProgressTimer) clearTimeout(_saveProgressTimer);
-    _saveProgressTimer = setTimeout(()=>{
-        _saveProgressTimer = null;
-        const snapshot = workItems.map(i => ({
-            idx: i.idx, done: !!i.done,
-            weight_oz: (typeof i.weightOz === 'number') ? i.weightOz : null,
-            skipped: !!i.skipped, skip_reason: i.skipReason || null,
-            weighed_by_id: i.weighedById || null,
-            weighed_by_name: i.weighedByName || null
-        }));
-        apiPost('saveitemprogress', { order_id: activeOrder.order_id, item_progress: snapshot }).catch(()=>{});
-    }, 500);
-}
-function resetLogin(){
-    pinEntry='';pinMode='login';pendingPin='';
-    $('loginTitle').textContent='Enter Your PIN';$('loginSubtitle').textContent='Use your Square PIN';$('pinStatus').textContent='';
-    $('nameInputScreen').classList.remove('active');$('loginScreen').style.display='flex';
-    $('nameInput').value='';$('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='REGISTER & START';updatePinDots();
-}
-$('logoutBtn').addEventListener('click',()=>{
-    stopPolling();stopMakeTimer();currentEmployee=null;activeOrder=null;workItems=[];activeEmployees=[];currentWeigher=null;
-    $('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');
-    $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';
-    $('overrideLink').style.display='none';
-    resetLogin();
-});
+function saveProgressDebounced(){if(!activeOrder||!activeOrder.order_id)return;if(_saveProgressTimer)clearTimeout(_saveProgressTimer);_saveProgressTimer=setTimeout(()=>{_saveProgressTimer=null;const snapshot=workItems.map(i=>({idx:i.idx,done:!!i.done,weight_oz:(typeof i.weightOz==='number')?i.weightOz:null,skipped:!!i.skipped,skip_reason:i.skipReason||null,weighed_by_id:i.weighedById||null,weighed_by_name:i.weighedByName||null}));apiPost('saveitemprogress',{order_id:activeOrder.order_id,item_progress:snapshot}).catch(()=>{});},500);}
+function resetLogin(){pinEntry='';pinMode='login';pendingPin='';$('loginTitle').textContent='Enter Your PIN';$('loginSubtitle').textContent='Use your Square PIN';$('pinStatus').textContent='';$('nameInputScreen').classList.remove('active');$('loginScreen').style.display='flex';$('nameInput').value='';$('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='REGISTER & START';updatePinDots();}
+$('logoutBtn').addEventListener('click',()=>{stopPolling();stopMakeTimer();currentEmployee=null;activeOrder=null;workItems=[];checkedInHelpers=[];currentWeigher=null;$('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');$('employeeBadge').style.display='none';$('logoutBtn').style.display='none';$('overrideLink').style.display='none';resetLogin();});
 
 // ===== TABS =====
-function switchTab(tab){
-    activeTab=tab;
-    $('tabClaimNext').className='tab-btn'+(tab==='claimNext'?' active':'');
-    $('tabCompleted').className='tab-btn'+(tab==='completed'?' active':'');
-    $('claimNextContent').style.display = (tab==='claimNext' ? 'flex' : 'none');
-    $('completedContent').style.display = (tab==='completed' ? 'flex' : 'none');
-    if (tab === 'completed') fetchCompletedOrders();
-}
+function switchTab(tab){activeTab=tab;$('tabClaimNext').className='tab-btn'+(tab==='claimNext'?' active':'');$('tabCompleted').className='tab-btn'+(tab==='completed'?' active':'');$('claimNextContent').style.display=(tab==='claimNext'?'flex':'none');$('completedContent').style.display=(tab==='completed'?'flex':'none');if(tab==='completed')fetchCompletedOrders();}
 
 // ===== POLLING =====
 function startPolling(){fetchQueueStatus();pollTimer=setInterval(fetchQueueStatus,POLL_INTERVAL);}
 function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
-async function fetchQueueStatus(){
-    try{
-        queueStatus = await apiGet('getqueuestatus',{location:LOCATION});
-        renderQueueBanners();
-        const hasQueue = (queueStatus.queue_count || 0) > 0;
-        $('claimNextEmpty').style.display = hasQueue ? 'none' : 'block';
-        $('claimNextBtn').style.display = hasQueue ? 'block' : 'none';
-        if (activeTab === 'completed') fetchCompletedOrders();
-        $('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();
-    }catch(e){
-        $('pollStatus').textContent='Connection error - retrying...';
-    }
-}
+async function fetchQueueStatus(){try{queueStatus=await apiGet('getqueuestatus',{location:LOCATION});renderQueueBanners();const hasQueue=(queueStatus.queue_count||0)>0;$('claimNextEmpty').style.display=hasQueue?'none':'block';$('claimNextBtn').style.display=hasQueue?'block':'none';if(activeTab==='completed')fetchCompletedOrders();$('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();}catch(e){$('pollStatus').textContent='Connection error - retrying...';}}
 
-async function fetchCompletedOrders(){
-    try{
-        const all = await apiGet('getpendingorders',{location:LOCATION});
-        orders = all;
-        renderCompletedList();
-    }catch(e){}
-}
-
-function renderCompletedList(){
-    const list = $('completedList');
-    const completed = (orders||[]).filter(o => o.completed_at);
-    if (!completed.length) {
-        list.innerHTML = '<div class="no-orders"><div class="icon">📋</div><div class="msg">No completed orders</div></div>';
-        return;
-    }
-    completed.sort((a,b) => new Date(b.completed_at) - new Date(a.completed_at));
-    const makeColor = s => { if (s < 120) return '#4ade80'; if (s < 210) return '#facc15'; if (s < 300) return '#fb923c'; return '#ef4444'; };
-    const totalColor = s => { if (s < 180) return '#4ade80'; if (s < 300) return '#facc15'; if (s < 480) return '#fb923c'; return '#ef4444'; };
-    const fmtMMSS = s => { if (s === null || s === undefined || isNaN(s) || s < 0) return '—'; const m = Math.floor(s / 60); const sec = Math.floor(s % 60); return m + ':' + sec.toString().padStart(2,'0'); };
-    const secsBetween = (startIso, endIso) => { if (!startIso || !endIso) return null; return Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000); };
-    let h = '';
-    completed.forEach(o => {
-        const makeSecs = secsBetween(o.claimed_at, o.completed_at);
-        const endIso = (o.order_type === 'DRIVE-THRU') ? (o.picked_up_at || o.completed_at) : o.completed_at;
-        const totalSecs = secsBetween(o.created_at, endIso);
-        const typeBadge = o.order_type === 'WALK-UP'
-            ? '<span style="display:inline-block;background:#0ea5e9;color:white;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚶 WALK-UP</span>'
-            : '<span style="display:inline-block;background:#f59e0b;color:#1a1a2e;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚗 DRIVE-THRU</span>';
-        h += '<div class="order-card completed" style="display:block;">';
-        h += '<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+typeBadge+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';
-        h += '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">'+o.order_id+(o.payment_type?' • '+o.payment_type:'');
-        if (o.claimed_by) h += ' • made by ' + esc(o.claimed_by);
-        h += '</div>';
-        if (makeSecs !== null || totalSecs !== null) {
-            h += '<div style="margin-top:6px;font-size:0.85rem;font-weight:700;">';
-            if (makeSecs !== null) h += '<div style="color:'+makeColor(makeSecs)+';">⏱ Make: '+fmtMMSS(makeSecs)+'</div>';
-            if (totalSecs !== null) h += '<div style="color:'+totalColor(totalSecs)+';margin-top:2px;">👥 Customer wait: '+fmtMMSS(totalSecs)+'</div>';
-            h += '</div>';
-        }
-        if (o.notes) h += '<div style="font-size:0.85rem;color:var(--warning);font-weight:600;margin-top:6px;">📝 '+esc(o.notes)+'</div>';
-        const itemsForDisplay = (o.all_items && o.all_items.length) ? o.all_items : (o.items || []);
-        if (itemsForDisplay.length) {
-            h += '<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;">';
-            itemsForDisplay.forEach(it => {
-                const isChild = it.isMod || it.isTopping || it.isSundaeTopping;
-                const indent = isChild ? 'padding-left:14px;color:var(--text-dim);font-size:0.85rem;' : 'font-weight:600;font-size:0.95rem;';
-                const icon = isChild ? '↳ ' : '• ';
-                h += '<div style="margin-top:3px;'+indent+'">' + icon + esc(it.name || '');
-                if (it.flavors) h += ' <span style="color:var(--text-dim);">— '+esc(it.flavors)+'</span>';
-                if (it.qty && it.qty > 1) h += ' <span style="color:var(--text-dim);">×'+it.qty+'</span>';
-                h += '</div>';
-                if (it.itemNote) h += '<div style="padding-left:14px;font-size:0.8rem;color:var(--warning);">📝 '+esc(it.itemNote)+'</div>';
-                if (it.allergyAlert) h += '<div style="padding-left:14px;font-size:0.8rem;color:#fca5a5;font-weight:700;">⚠️ ALLERGY</div>';
-                if (it.freeSprinkles) h += '<div style="padding-left:14px;font-size:0.8rem;color:#16a34a;font-weight:700;">🎉 Free Sprinkles</div>';
-            });
-            h += '</div>';
-        }
-        h += '<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:6px;">✓ Completed</div></div>';
-    });
-    list.innerHTML = h;
-}
-
+async function fetchCompletedOrders(){try{const all=await apiGet('getpendingorders',{location:LOCATION});orders=all;renderCompletedList();}catch(e){}}
+function renderCompletedList(){const list=$('completedList');const completed=(orders||[]).filter(o=>o.completed_at);if(!completed.length){list.innerHTML='<div class="no-orders"><div class="icon">📋</div><div class="msg">No completed orders</div></div>';return;}completed.sort((a,b)=>new Date(b.completed_at)-new Date(a.completed_at));const makeColor=s=>{if(s<120)return '#4ade80';if(s<210)return '#facc15';if(s<300)return '#fb923c';return '#ef4444';};const totalColor=s=>{if(s<180)return '#4ade80';if(s<300)return '#facc15';if(s<480)return '#fb923c';return '#ef4444';};const fmtMMSS=s=>{if(s===null||s===undefined||isNaN(s)||s<0)return '—';const m=Math.floor(s/60);const sec=Math.floor(s%60);return m+':'+sec.toString().padStart(2,'0');};const secsBetween=(startIso,endIso)=>{if(!startIso||!endIso)return null;return Math.floor((new Date(endIso).getTime()-new Date(startIso).getTime())/1000);};let h='';completed.forEach(o=>{const makeSecs=secsBetween(o.claimed_at,o.completed_at);const endIso=(o.order_type==='DRIVE-THRU')?(o.picked_up_at||o.completed_at):o.completed_at;const totalSecs=secsBetween(o.created_at,endIso);const typeBadge=o.order_type==='WALK-UP'?'<span style="display:inline-block;background:#0ea5e9;color:white;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚶 WALK-UP</span>':'<span style="display:inline-block;background:#f59e0b;color:#1a1a2e;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚗 DRIVE-THRU</span>';h+='<div class="order-card completed" style="display:block;">';h+='<div class="order-card-top"><span class="order-card-car">'+esc(o.car_name||'No Car')+typeBadge+'</span><span class="order-card-time">'+orderAge(o.completed_at)+'</span></div>';h+='<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">'+o.order_id+(o.payment_type?' • '+o.payment_type:'');if(o.claimed_by)h+=' • made by '+esc(o.claimed_by);h+='</div>';if(makeSecs!==null||totalSecs!==null){h+='<div style="margin-top:6px;font-size:0.85rem;font-weight:700;">';if(makeSecs!==null)h+='<div style="color:'+makeColor(makeSecs)+';">⏱ Make: '+fmtMMSS(makeSecs)+'</div>';if(totalSecs!==null)h+='<div style="color:'+totalColor(totalSecs)+';margin-top:2px;">👥 Customer wait: '+fmtMMSS(totalSecs)+'</div>';h+='</div>';}if(o.notes)h+='<div style="font-size:0.85rem;color:var(--warning);font-weight:600;margin-top:6px;">📝 '+esc(o.notes)+'</div>';const itemsForDisplay=(o.all_items&&o.all_items.length)?o.all_items:(o.items||[]);if(itemsForDisplay.length){h+='<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;">';itemsForDisplay.forEach(it=>{const isChild=it.isMod||it.isTopping||it.isSundaeTopping;const indent=isChild?'padding-left:14px;color:var(--text-dim);font-size:0.85rem;':'font-weight:600;font-size:0.95rem;';const icon=isChild?'↳ ':'• ';h+='<div style="margin-top:3px;'+indent+'">'+icon+esc(it.name||'');if(it.flavors)h+=' <span style="color:var(--text-dim);">— '+esc(it.flavors)+'</span>';if(it.qty&&it.qty>1)h+=' <span style="color:var(--text-dim);">×'+it.qty+'</span>';h+='</div>';if(it.itemNote)h+='<div style="padding-left:14px;font-size:0.8rem;color:var(--warning);">📝 '+esc(it.itemNote)+'</div>';if(it.allergyAlert)h+='<div style="padding-left:14px;font-size:0.8rem;color:#fca5a5;font-weight:700;">⚠️ ALLERGY</div>';if(it.freeSprinkles)h+='<div style="padding-left:14px;font-size:0.8rem;color:#16a34a;font-weight:700;">🎉 Free Sprinkles</div>';});h+='</div>';}h+='<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:6px;">✓ Completed</div></div>';});list.innerHTML=h;}
 function orderAge(ts){if(!ts)return '';const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
 
 // ===== CLAIM NEXT =====
-$('claimNextBtn').addEventListener('click', claimNextOrder);
+$('claimNextBtn').addEventListener('click',claimNextOrder);
+async function claimNextOrder(){if(claiming)return;claiming=true;const btn=$('claimNextBtn'),msg=$('claimNextMsg');btn.disabled=true;btn.textContent='⏳ Claiming...';msg.textContent='';try{const r=await apiGet('claimnextorder',{location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name});if(r.success){const claimedAt=new Date().toISOString();activeOrder={order_id:r.order_id,items:r.items||[],car_name:r.car_name||'',notes:r.notes||'',payment_type:r.payment_type||'',order_type:r.order_type||'DRIVE-THRU',claimed_by:currentEmployee.name,claimed_at:claimedAt,created_at:r.created_at||null};workItems=activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null,weighedById:null,weighedByName:null}));claiming=false;btn.disabled=false;btn.textContent='⚡ Claim Next Order';queueStatus.queue_count=Math.max(0,(queueStatus.queue_count||0)-1);queueStatus.priority_count=(queueStatus.priority_count||0)+1;renderQueueBanners();resetWeigherToClaimer();showWorkScreen();startMakeTimer(claimedAt);}else{claiming=false;btn.disabled=false;btn.textContent='⚡ Claim Next Order';const reason=r.reason||r.error||'Could not claim';msg.textContent=reason;setTimeout(()=>{if(msg.textContent===reason)msg.textContent='';},4000);fetchQueueStatus();}}catch(e){claiming=false;btn.disabled=false;btn.textContent='⚡ Claim Next Order';msg.textContent='Connection error — try again';}}
 
-async function claimNextOrder(){
-    if (claiming) return;
-    claiming = true;
-    const btn = $('claimNextBtn');
-    const msg = $('claimNextMsg');
-    btn.disabled = true; btn.textContent = '⏳ Claiming...'; msg.textContent = '';
-    try {
-        const r = await apiGet('claimnextorder', { location: LOCATION, employee_id: currentEmployee.id, employee_name: currentEmployee.name });
-        if (r.success) {
-            const claimedAt = new Date().toISOString();
-            activeOrder = {
-                order_id: r.order_id, items: r.items || [], car_name: r.car_name || '',
-                notes: r.notes || '', payment_type: r.payment_type || '',
-                order_type: r.order_type || 'DRIVE-THRU', claimed_by: currentEmployee.name,
-                claimed_at: claimedAt, created_at: r.created_at || null
-            };
-            workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null,weighedById:null,weighedByName:null}));
-            claiming = false; btn.disabled = false; btn.textContent = '⚡ Claim Next Order';
-            queueStatus.queue_count = Math.max(0, (queueStatus.queue_count || 0) - 1);
-            queueStatus.priority_count = (queueStatus.priority_count || 0) + 1;
-            renderQueueBanners();
-            resetWeigherToClaimer();
-            showWorkScreen();
-            startMakeTimer(claimedAt);
-        } else {
-            claiming = false; btn.disabled = false; btn.textContent = '⚡ Claim Next Order';
-            const reason = r.reason || r.error || 'Could not claim';
-            msg.textContent = reason;
-            setTimeout(()=>{ if (msg.textContent === reason) msg.textContent = ''; }, 4000);
-            fetchQueueStatus();
-        }
-    } catch(e) {
-        claiming = false; btn.disabled = false; btn.textContent = '⚡ Claim Next Order';
-        msg.textContent = 'Connection error — try again';
-    }
-}
-
-// ===== OVERRIDE TAKEOVER =====
-async function openOverrideModal(){
-    const modal = $('overrideModal');
-    const list = $('overrideList');
-    list.innerHTML = '<div class="override-empty">Loading...</div>';
-    modal.classList.add('show');
-    try {
-        const all = await apiGet('getpendingorders',{location:LOCATION});
-        const active = all.filter(o => o.claimed_by && !o.completed_at);
-        if (!active.length) { list.innerHTML = '<div class="override-empty">No active orders to take over</div>'; return; }
-        let h = '';
-        active.forEach(o => {
-            const wc = (o.items||[]).filter(i=>i.needsWeigh).length;
-            const pc = (o.items||[]).filter(i=>!i.needsWeigh).length;
-            h += '<button class="override-order-btn" data-oid="'+esc(o.order_id)+'">';
-            h += '<div style="font-weight:800;">'+esc(o.car_name||'No Car')+' — '+esc(o.order_id)+'</div>';
-            h += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">Claimed by '+esc(o.claimed_by)+(o.claimed_at?' • '+orderAge(o.claimed_at):'')+'</div>';
-            h += '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">'+(wc?wc+' weigh · ':'')+(pc?pc+' prep':'')+'</div>';
-            h += '</button>';
-        });
-        list.innerHTML = h;
-        list.querySelectorAll('.override-order-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const oid = btn.dataset.oid;
-                const o = active.find(x => x.order_id === oid);
-                if (!o) return;
-                if (!confirm('Take over order '+o.order_id+' from '+o.claimed_by+'?')) return;
-                overrideClaim(o);
-            });
-        });
-    } catch(e) { list.innerHTML = '<div class="override-empty">Connection error</div>'; }
-}
-$('overrideCancelBtn').addEventListener('click', ()=> $('overrideModal').classList.remove('show'));
-
-async function overrideClaim(order){
-    $('overrideModal').classList.remove('show');
-    try {
-        const r = await apiGet('claimorder', { order_id: order.order_id, employee_id: currentEmployee.id, employee_name: currentEmployee.name });
-        if (r.success) {
-            const claimedAt = new Date().toISOString();
-            activeOrder = {
-                order_id: order.order_id, items: r.items || order.items || [],
-                car_name: order.car_name || '', notes: order.notes || '',
-                payment_type: order.payment_type || '', order_type: order.order_type || 'DRIVE-THRU',
-                claimed_by: currentEmployee.name, claimed_at: claimedAt,
-                created_at: r.created_at || order.created_at || null
-            };
-            workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null,weighedById:null,weighedByName:null}));
-            resetWeigherToClaimer();
-            showWorkScreen();
-            startMakeTimer(claimedAt);
-            showToast('Took over '+order.order_id);
-        } else { showToast(r.error||r.reason||'Could not take over',true); }
-    } catch(e) { showToast('Connection error',true); }
-}
+// ===== OVERRIDE =====
+async function openOverrideModal(){const modal=$('overrideModal'),list=$('overrideList');list.innerHTML='<div class="override-empty">Loading...</div>';modal.classList.add('show');try{const all=await apiGet('getpendingorders',{location:LOCATION});const active=all.filter(o=>o.claimed_by&&!o.completed_at);if(!active.length){list.innerHTML='<div class="override-empty">No active orders to take over</div>';return;}let h='';active.forEach(o=>{const wc=(o.items||[]).filter(i=>i.needsWeigh).length;const pc=(o.items||[]).filter(i=>!i.needsWeigh).length;h+='<button class="override-order-btn" data-oid="'+esc(o.order_id)+'"><div style="font-weight:800;">'+esc(o.car_name||'No Car')+' — '+esc(o.order_id)+'</div><div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">Claimed by '+esc(o.claimed_by)+(o.claimed_at?' • '+orderAge(o.claimed_at):'')+'</div><div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">'+(wc?wc+' weigh · ':'')+(pc?pc+' prep':'')+'</div></button>';});list.innerHTML=h;list.querySelectorAll('.override-order-btn').forEach(btn=>{btn.addEventListener('click',()=>{const oid=btn.dataset.oid;const o=active.find(x=>x.order_id===oid);if(!o)return;if(!confirm('Take over order '+o.order_id+' from '+o.claimed_by+'?'))return;overrideClaim(o);});});}catch(e){list.innerHTML='<div class="override-empty">Connection error</div>';}}
+$('overrideCancelBtn').addEventListener('click',()=>$('overrideModal').classList.remove('show'));
+async function overrideClaim(order){$('overrideModal').classList.remove('show');try{const r=await apiGet('claimorder',{order_id:order.order_id,employee_id:currentEmployee.id,employee_name:currentEmployee.name});if(r.success){const claimedAt=new Date().toISOString();activeOrder={order_id:order.order_id,items:r.items||order.items||[],car_name:order.car_name||'',notes:order.notes||'',payment_type:order.payment_type||'',order_type:order.order_type||'DRIVE-THRU',claimed_by:currentEmployee.name,claimed_at:claimedAt,created_at:r.created_at||order.created_at||null};workItems=activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null,weighedById:null,weighedByName:null}));resetWeigherToClaimer();showWorkScreen();startMakeTimer(claimedAt);showToast('Took over '+order.order_id);}else{showToast(r.error||r.reason||'Could not take over',true);}}catch(e){showToast('Connection error',true);}}
 
 // ===== WORK SCREEN =====
-function showWorkScreen(){
-    $('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.add('active');
-    $('workCar').textContent=activeOrder.car_name||'No Car';
-    $('workMeta').textContent=activeOrder.order_id+(activeOrder.payment_type?' • '+activeOrder.payment_type:'');
-    $('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';
-    $('workNotes').style.display=activeOrder.notes?'block':'none';
-    const badgeEl=$('workOrderTypeBadge');
-    if(activeOrder.order_type==='WALK-UP'){ badgeEl.innerHTML='<span class="work-order-type-badge walkup">🚶 WALK-UP — COUNTER</span>'; }
-    else { badgeEl.innerHTML='<span class="work-order-type-badge drivethru">🚗 DRIVE-THRU — WINDOW</span>'; }
-    resetWeigherToClaimer();
-    renderWorkItems();
-}
+function showWorkScreen(){$('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.add('active');$('workCar').textContent=activeOrder.car_name||'No Car';$('workMeta').textContent=activeOrder.order_id+(activeOrder.payment_type?' • '+activeOrder.payment_type:'');$('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';$('workNotes').style.display=activeOrder.notes?'block':'none';const badgeEl=$('workOrderTypeBadge');if(activeOrder.order_type==='WALK-UP'){badgeEl.innerHTML='<span class="work-order-type-badge walkup">🚶 WALK-UP — COUNTER</span>';}else{badgeEl.innerHTML='<span class="work-order-type-badge drivethru">🚗 DRIVE-THRU — WINDOW</span>';}resetWeigherToClaimer();renderWorkItems();}
 
-function renderWorkItems(){
-    const parents=[];
-    workItems.forEach(i=>{
-        if(i.isMod||i.isTopping||i.isSundaeTopping){
-            if(parents.length>0){ if(!parents[parents.length-1].mods)parents[parents.length-1].mods=[]; parents[parents.length-1].mods.push(i); }
-        } else { i.mods=[]; parents.push(i); }
-    });
-    const priorityPending = parents.some(i => isPriorityItem(i) && !i.done);
-    const priority = parents.filter(i => isPriorityItem(i));
-    priority.sort((a, b) => (a.needsWeigh ? 0 : 1) - (b.needsWeigh ? 0 : 1));
-    const wi = parents.filter(i => i.needsWeigh && !isPriorityItem(i));
-    const pi = parents.filter(i => !i.needsWeigh && !isPriorityItem(i));
-    let h='';
-    if(priorityPending){
-        h+='<div style="grid-column:1 / -1;background:rgba(245,158,11,0.15);border:2px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:4px;color:#f59e0b;font-weight:700;font-size:0.9rem;text-align:center;">⚡ Make the highlighted items first — other items are locked until they are done</div>';
-    }
-    if(priority.length){
-        h+='<div class="section-label" style="color:#f59e0b;">⚡ MAKE FIRST ('+priority.filter(i=>i.done).length+'/'+priority.length+')</div>';
-        priority.forEach(i=>{h+=renderWorkItem(i, !!i.needsWeigh, priorityPending);});
-    }
-    if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true,priorityPending);});}
-    if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false,priorityPending);});}
-    $('itemsScroll').innerHTML=h;
-    $('itemsScroll').querySelectorAll('.work-item').forEach(el=>{el.addEventListener('click',()=>handleItemTap(parseInt(el.dataset.idx)));});
-    updateCompleteBtn();
-    saveProgressDebounced();
-}
+function renderWorkItems(){const parents=[];workItems.forEach(i=>{if(i.isMod||i.isTopping||i.isSundaeTopping){if(parents.length>0){if(!parents[parents.length-1].mods)parents[parents.length-1].mods=[];parents[parents.length-1].mods.push(i);}}else{i.mods=[];parents.push(i);}});const priorityPending=parents.some(i=>isPriorityItem(i)&&!i.done);const priority=parents.filter(i=>isPriorityItem(i));priority.sort((a,b)=>(a.needsWeigh?0:1)-(b.needsWeigh?0:1));const wi=parents.filter(i=>i.needsWeigh&&!isPriorityItem(i));const pi=parents.filter(i=>!i.needsWeigh&&!isPriorityItem(i));let h='';if(priorityPending){h+='<div style="grid-column:1 / -1;background:rgba(245,158,11,0.15);border:2px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:4px;color:#f59e0b;font-weight:700;font-size:0.9rem;text-align:center;">⚡ Make the highlighted items first — other items are locked until they are done</div>';}if(priority.length){h+='<div class="section-label" style="color:#f59e0b;">⚡ MAKE FIRST ('+priority.filter(i=>i.done).length+'/'+priority.length+')</div>';priority.forEach(i=>{h+=renderWorkItem(i,!!i.needsWeigh,priorityPending);});}if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true,priorityPending);});}if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false,priorityPending);});}$('itemsScroll').innerHTML=h;$('itemsScroll').querySelectorAll('.work-item').forEach(el=>{el.addEventListener('click',()=>handleItemTap(parseInt(el.dataset.idx)));});updateCompleteBtn();saveProgressDebounced();}
 
-function renderWorkItem(item,isWeigh,priorityPending){
-    const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';
-    const isPriority = isPriorityItem(item);
-    const priorityClass = isPriority ? ' priority' : '';
-    const lockedClass = '';
-    let wt='';
-    if(item.done&&item.weightOz!==null){const d=item.weightOz-item.targetOz;let wc='good';if(Math.abs(d)>TOLERANCE)wc=d>0?'over':'under';wt='<div class="work-item-weight '+wc+'">✓ '+item.weightOz.toFixed(1)+' oz</div>';}
-    else if(item.done&&item.skipped){wt='<div class="work-item-weight under">⚠ Not weighed'+(item.skipReason?' - '+item.skipReason:'')+'</div>';}
-    else if(item.done){wt='<div class="work-item-weight good">✓ Done</div>';}
-    // Show who weighed it if different from claimer
-    if(item.done&&item.weighedByName&&currentEmployee&&item.weighedByName!==currentEmployee.name){
-        wt+='<div class="work-item-weigher">⚖️ Weighed by '+esc(item.weighedByName)+'</div>';
-    }
-    let h='<div class="work-item '+tc+dc+priorityClass+lockedClass+'" data-idx="'+item.idx+'"><div class="work-item-top">';
-    h+='<span class="work-item-name"><span class="item-type-icon">'+ic+'</span> '+esc(item.name);
-    if(isPriority&&!item.done)h+='<span class="priority-badge">⚡ MAKE FIRST</span>';
-    h+='</span>';
-    if(isWeigh&&item.targetOz)h+='<span class="work-item-target">Target: '+item.targetOz+' oz</span>';
-    if(item.done)h+='<span class="item-check">✓</span>';
-    h+='</div>';
-    if(item.flavors){
-        var prefixedFlavors = esc(item.flavors).replace(/Hand Packed /g, '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ');
-        var handPackedPrefix = (item.handPacked && item.sku !== 'PINTPAIR') ? '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ' : '';
-        h+='<div class="work-item-flavors">'+handPackedPrefix+prefixedFlavors+'</div>';
-    }
-    if(item.sundaeToppingNote)h+='<div class="work-item-flavors" style="color:#f59e0b;">'+esc(item.sundaeToppingNote)+'</div>';
-    if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';
-    if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
-    if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
-    if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
-    if(item.mods&&item.mods.length)item.mods.forEach(m=>{h+='<div class="work-item-mod">'+esc(m.name)+'</div>';});
-    if(lockedClass)h+='<div class="locked-hint">🔒 Locked until shake/sundae/split is done</div>';
-    h+=wt+'</div>';return h;
-}
+function renderWorkItem(item,isWeigh,priorityPending){const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';const isPriority=isPriorityItem(item);const priorityClass=isPriority?' priority':'';let wt='';if(item.done&&item.weightOz!==null){const d=item.weightOz-item.targetOz;let wc='good';if(Math.abs(d)>TOLERANCE)wc=d>0?'over':'under';wt='<div class="work-item-weight '+wc+'">✓ '+item.weightOz.toFixed(1)+' oz</div>';}else if(item.done&&item.skipped){wt='<div class="work-item-weight under">⚠ Not weighed'+(item.skipReason?' - '+item.skipReason:'')+'</div>';}else if(item.done){wt='<div class="work-item-weight good">✓ Done</div>';}if(item.done&&item.weighedByName&&currentEmployee&&item.weighedByName!==currentEmployee.name){wt+='<div class="work-item-weigher">⚖️ Weighed by '+esc(item.weighedByName)+'</div>';}let h='<div class="work-item '+tc+dc+priorityClass+'" data-idx="'+item.idx+'"><div class="work-item-top">';h+='<span class="work-item-name"><span class="item-type-icon">'+ic+'</span> '+esc(item.name);if(isPriority&&!item.done)h+='<span class="priority-badge">⚡ MAKE FIRST</span>';h+='</span>';if(isWeigh&&item.targetOz)h+='<span class="work-item-target">Target: '+item.targetOz+' oz</span>';if(item.done)h+='<span class="item-check">✓</span>';h+='</div>';if(item.flavors){var prefixedFlavors=esc(item.flavors).replace(/Hand Packed /g,'<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ');var handPackedPrefix=(item.handPacked&&item.sku!=='PINTPAIR')?'<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ':'';h+='<div class="work-item-flavors">'+handPackedPrefix+prefixedFlavors+'</div>';}if(item.sundaeToppingNote)h+='<div class="work-item-flavors" style="color:#f59e0b;">'+esc(item.sundaeToppingNote)+'</div>';if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';if(item.mods&&item.mods.length)item.mods.forEach(m=>{h+='<div class="work-item-mod">'+esc(m.name)+'</div>';});h+=wt+'</div>';return h;}
 
 // ===== ITEM TAP =====
-function handleItemTap(idx){
-    const item=workItems[idx];if(!item)return;
-    if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;item.weighedById=null;item.weighedByName=null;renderWorkItems();return;}
-    if(item.needsWeigh){
-        if(scaleState!=='live'){item.done=true;item.skipped=true;item.skipReason='Scale not connected';item.weighedById=currentWeigher?currentWeigher.id:null;item.weighedByName=currentWeigher?currentWeigher.name:null;resetWeigherToClaimer();renderWorkItems();showToast('✓ '+item.name+' marked done (no scale)');return;}
-        if(currentWeight<=0){showToast('Place item on scale first',true);return;}
-        if(currentWeight<item.targetOz*0.5){showToast('Wait for scale to settle',true);return;}
-        const diff=currentWeight-item.targetOz;
-        if(diff<-TOLERANCE)showWeightWarning(item,currentWeight,'under');
-        else if(diff>TOLERANCE)showWeightWarning(item,currentWeight,'over');
-        else{
-            item.done=true;item.weightOz=currentWeight;
-            item.weighedById=currentWeigher?currentWeigher.id:currentEmployee.id;
-            item.weighedByName=currentWeigher?currentWeigher.name:currentEmployee.name;
-            weighFeedback(item,currentWeight);
-            resetWeigherToClaimer();
-            renderWorkItems();
-        }
-    }else{item.done=true;renderWorkItems();showToast('✓ '+item.name);}
-}
+function handleItemTap(idx){const item=workItems[idx];if(!item)return;if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;item.weighedById=null;item.weighedByName=null;renderWorkItems();return;}if(item.needsWeigh){if(scaleState!=='live'){item.done=true;item.skipped=true;item.skipReason='Scale not connected';item.weighedById=currentWeigher?currentWeigher.id:null;item.weighedByName=currentWeigher?currentWeigher.name:null;resetWeigherToClaimer();renderWorkItems();showToast('✓ '+item.name+' marked done (no scale)');return;}if(currentWeight<=0){showToast('Place item on scale first',true);return;}if(currentWeight<item.targetOz*0.5){showToast('Wait for scale to settle',true);return;}const diff=currentWeight-item.targetOz;if(diff<-TOLERANCE)showWeightWarning(item,currentWeight,'under');else if(diff>TOLERANCE)showWeightWarning(item,currentWeight,'over');else{item.done=true;item.weightOz=currentWeight;item.weighedById=currentWeigher?currentWeigher.id:currentEmployee.id;item.weighedByName=currentWeigher?currentWeigher.name:currentEmployee.name;weighFeedback(item,currentWeight);resetWeigherToClaimer();renderWorkItems();}}else{item.done=true;resetWeigherToClaimer();renderWorkItems();showToast('✓ '+item.name);}}
 
 // ===== WEIGHT WARNINGS =====
-function showWeightWarning(item,weight,type){
-    pendingWeighItem={item,weight,weigherId:currentWeigher?currentWeigher.id:currentEmployee.id,weigherName:currentWeigher?currentWeigher.name:currentEmployee.name};
-    $('warningWeight').textContent=weight.toFixed(1)+' oz';$('warningTarget').textContent='Target: '+item.targetOz+' oz';
-    if(type==='under'){$('warningIcon').textContent='⚠️';$('warningTitle').textContent='UNDER WEIGHT';$('warningTitle').className='modal-title warning-under';$('warningWeight').className='modal-weight warning-under';$('warningMessage').textContent='Add more ice cream and re-weigh.';$('reweighBtn').textContent='Add & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept Anyway';}
-    else{$('warningIcon').textContent='🔴';$('warningTitle').textContent='OVER WEIGHT';$('warningTitle').className='modal-title warning-over';$('warningWeight').className='modal-weight warning-over';$('warningMessage').textContent='Over target. Remove some and re-weigh, or accept as-is.';$('reweighBtn').textContent='Remove & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept & Continue';}
-    $('weightWarningModal').classList.add('show');
-}
+function showWeightWarning(item,weight,type){pendingWeighItem={item,weight,weigherId:currentWeigher?currentWeigher.id:currentEmployee.id,weigherName:currentWeigher?currentWeigher.name:currentEmployee.name};$('warningWeight').textContent=weight.toFixed(1)+' oz';$('warningTarget').textContent='Target: '+item.targetOz+' oz';if(type==='under'){$('warningIcon').textContent='⚠️';$('warningTitle').textContent='UNDER WEIGHT';$('warningTitle').className='modal-title warning-under';$('warningWeight').className='modal-weight warning-under';$('warningMessage').textContent='Add more ice cream and re-weigh.';$('reweighBtn').textContent='Add & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept Anyway';}else{$('warningIcon').textContent='🔴';$('warningTitle').textContent='OVER WEIGHT';$('warningTitle').className='modal-title warning-over';$('warningWeight').className='modal-weight warning-over';$('warningMessage').textContent='Over target. Remove some and re-weigh, or accept as-is.';$('reweighBtn').textContent='Remove & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept & Continue';}$('weightWarningModal').classList.add('show');}
 $('reweighBtn').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;showToast('Adjust and re-weigh');});
 $('weightWarningClose').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;resetWeigherToClaimer();});
-$('acceptWeightBtn').addEventListener('click',()=>{
-    if(pendingWeighItem){
-        const i=pendingWeighItem.item;
-        i.done=true;i.weightOz=pendingWeighItem.weight;
-        i.weighedById=pendingWeighItem.weigherId;
-        i.weighedByName=pendingWeighItem.weigherName;
-        weighFeedback(i,pendingWeighItem.weight);
-        resetWeigherToClaimer();
-        renderWorkItems();
-    }
-    $('weightWarningModal').classList.remove('show');pendingWeighItem=null;
-});
-function weighFeedback(item,w){
-    const d=Math.abs(w-item.targetOz);let e,m;
-    if(d<=0.2){e='🎯';m='PERFECT!';}else if(d<=TOLERANCE){e='👍';m='Good!';}else if(w<item.targetOz){e='⚠️';m='Under';}else{e='😬';m='Over';}
-    $('scaleFeedback').textContent=e+' '+m;showToast(e+' '+item.name+': '+w.toFixed(1)+' oz - '+m,d>TOLERANCE);
-}
+$('acceptWeightBtn').addEventListener('click',()=>{if(pendingWeighItem){const i=pendingWeighItem.item;i.done=true;i.weightOz=pendingWeighItem.weight;i.weighedById=pendingWeighItem.weigherId;i.weighedByName=pendingWeighItem.weigherName;weighFeedback(i,pendingWeighItem.weight);resetWeigherToClaimer();renderWorkItems();}$('weightWarningModal').classList.remove('show');pendingWeighItem=null;});
+function weighFeedback(item,w){const d=Math.abs(w-item.targetOz);let e,m;if(d<=0.2){e='🎯';m='PERFECT!';}else if(d<=TOLERANCE){e='👍';m='Good!';}else if(w<item.targetOz){e='⚠️';m='Under';}else{e='😬';m='Over';}$('scaleFeedback').textContent=e+' '+m;showToast(e+' '+item.name+': '+w.toFixed(1)+' oz - '+m,d>TOLERANCE);}
 
 // ===== COMPLETE =====
-function updateCompleteBtn(){
-    const btn=$('completeBtn');
-    const countable=workItems.filter(i=>!i.isMod&&!i.isTopping&&!i.isSundaeTopping);
-    const total=countable.length,done=countable.filter(i=>i.done).length,rem=total-done;
-    if(!total){btn.disabled=true;btn.textContent='NO ITEMS';return;}
-    btn.disabled=false;
-    if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}
-    else{btn.className='complete-btn partial';btn.textContent='⚠ Mark Complete ('+rem+' not done)';}
-}
-$('completeBtn').addEventListener('click',()=>{
-    const rem=workItems.filter(i=>!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping);
-    if(rem.length)showSkipWarning(rem);else completeOrder();
-});
-
+function updateCompleteBtn(){const btn=$('completeBtn');const countable=workItems.filter(i=>!i.isMod&&!i.isTopping&&!i.isSundaeTopping);const total=countable.length,done=countable.filter(i=>i.done).length,rem=total-done;if(!total){btn.disabled=true;btn.textContent='NO ITEMS';return;}btn.disabled=false;if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}else{btn.className='complete-btn partial';btn.textContent='⚠ Mark Complete ('+rem+' not done)';}}
+$('completeBtn').addEventListener('click',()=>{const rem=workItems.filter(i=>!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping);if(rem.length)showSkipWarning(rem);else completeOrder();});
 let selectedSkipReason=null;
-function showSkipWarning(rem){
-    const wr=rem.filter(i=>i.needsWeigh),pr=rem.filter(i=>!i.needsWeigh);
-    let m='';if(wr.length)m+=wr.length+' item(s) not weighed. ';if(pr.length)m+=pr.length+' item(s) not prepped. ';
-    $('skipMessage').textContent=m;selectedSkipReason=null;$('skipConfirmBtn').disabled=true;
-    $('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));
-    $('skipWarningModal').classList.add('show');
-}
-$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(btn=>{
-    btn.addEventListener('click',()=>{selectedSkipReason=btn.dataset.reason;$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');$('skipConfirmBtn').disabled=false;});
-});
+function showSkipWarning(rem){const wr=rem.filter(i=>i.needsWeigh),pr=rem.filter(i=>!i.needsWeigh);let m='';if(wr.length)m+=wr.length+' item(s) not weighed. ';if(pr.length)m+=pr.length+' item(s) not prepped. ';$('skipMessage').textContent=m;selectedSkipReason=null;$('skipConfirmBtn').disabled=true;$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));$('skipWarningModal').classList.add('show');}
+$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(btn=>{btn.addEventListener('click',()=>{selectedSkipReason=btn.dataset.reason;$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');$('skipConfirmBtn').disabled=false;});});
 $('skipCancelBtn').addEventListener('click',()=>{$('skipWarningModal').classList.remove('show');});
-$('skipConfirmBtn').addEventListener('click',()=>{
-    workItems.forEach(i=>{if(!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping){i.done=true;i.skipped=true;i.skipReason=selectedSkipReason;}});
-    $('skipWarningModal').classList.remove('show');completeOrder();
-});
+$('skipConfirmBtn').addEventListener('click',()=>{workItems.forEach(i=>{if(!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping){i.done=true;i.skipped=true;i.skipReason=selectedSkipReason;}});$('skipWarningModal').classList.remove('show');completeOrder();});
 
-async function completeOrder(){
-    const btn=$('completeBtn');
-    btn.disabled=true;btn.textContent='Saving...';
-    const payload={order_id:activeOrder.order_id,location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name,
-        items:workItems.map(i=>({
-            item_name:i.name,sku:i.sku,flavors:i.flavors||'',needs_weigh:i.needsWeigh,target_oz:i.targetOz,
-            weight_oz:i.weightOz,skipped:i.skipped||false,skip_reason:i.skipReason||null,
-            weighed_by_id:i.weighedById||currentEmployee.id,
-            weighed_by_name:i.weighedByName||currentEmployee.name
-        }))};
-    try{
-        const result=await apiPost('completeorder',payload);
-        if(result.success===false){showToast(result.error||'Could not complete order',true);btn.disabled=false;updateCompleteBtn();return;}
-        const now=new Date().toISOString();
-        stopMakeTimer(now);
-        showToast('✓ Order complete!');
-        activeOrder=null;workItems=[];
-        $('makeTimer').style.display='none';$('queueTimer').style.display='none';
-        $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
-        queueStatus.priority_count = Math.max(0, (queueStatus.priority_count || 0) - 1);
-        queueStatus.ready_count = (queueStatus.ready_count || 0) + 1;
-        renderQueueBanners();
-        fetchQueueStatus();
-    }catch(e){showToast('Connection error — try again',true);btn.disabled=false;updateCompleteBtn();}
-}
+async function completeOrder(){const btn=$('completeBtn');btn.disabled=true;btn.textContent='Saving...';const payload={order_id:activeOrder.order_id,location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name,items:workItems.map(i=>({item_name:i.name,sku:i.sku,flavors:i.flavors||'',needs_weigh:i.needsWeigh,target_oz:i.targetOz,weight_oz:i.weightOz,skipped:i.skipped||false,skip_reason:i.skipReason||null,weighed_by_id:i.weighedById||currentEmployee.id,weighed_by_name:i.weighedByName||currentEmployee.name}))};try{const result=await apiPost('completeorder',payload);if(result.success===false){showToast(result.error||'Could not complete order',true);btn.disabled=false;updateCompleteBtn();return;}const now=new Date().toISOString();stopMakeTimer(now);showToast('✓ Order complete!');activeOrder=null;workItems=[];$('makeTimer').style.display='none';$('queueTimer').style.display='none';$('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');queueStatus.priority_count=Math.max(0,(queueStatus.priority_count||0)-1);queueStatus.ready_count=(queueStatus.ready_count||0)+1;renderQueueBanners();fetchQueueStatus();}catch(e){showToast('Connection error — try again',true);btn.disabled=false;updateCompleteBtn();}}
 
 // INIT
 if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
