@@ -1,1154 +1,2930 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#1a1a2e">
-    <title>JJOPS Weigh Station</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-        :root{--bg:#1a1a2e;--surface:#4a2c6a;--surface-light:#5d3a80;--accent:#9b59b6;--success:#4ade80;--warning:#f59e0b;--danger:#ef4444;--text:#fff;--text-dim:#c9b8d9;--weigh-color:#3b82f6;--prep-color:#8b5cf6}
-        html,body{height:100%;overflow:hidden}
-        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh;user-select:none}
-        .header{background:var(--surface);padding:8px 15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);flex-shrink:0}
-        .header h1{display:flex;align-items:center;gap:8px;font-size:1rem} .header h1 span{color:var(--accent)}
-        .employee-badge{background:var(--success);color:var(--bg);padding:6px 14px;border-radius:20px;font-size:0.85rem;font-weight:700}
-        .scale-indicator{padding:6px 12px;border-radius:20px;font-size:0.75rem;font-weight:700;background:rgba(255,255,255,0.1);color:var(--text-dim);cursor:pointer}
-        .scale-indicator.connected{background:rgba(74,222,128,0.2);color:var(--success)}
-        .scale-indicator.stale{background:rgba(245,158,11,0.3);color:var(--warning);animation:staleFlash 1.5s infinite}
-        .scale-indicator.dead{background:rgba(239,68,68,0.3);color:var(--danger);animation:staleFlash 1s infinite}
-        @keyframes staleFlash{0%,100%{opacity:1}50%{opacity:0.6}}
-        .header-right{display:flex;align-items:center;gap:8px}
-        .logout-btn{background:var(--surface-light);color:var(--text);border:none;padding:6px 14px;border-radius:20px;font-size:0.8rem;font-weight:600;cursor:pointer}
+/**
+ * Nightly job to match weigh records to Square transactions.
+ *
+ * Matches on:
+ *   - location
+ *   - mapped item name (weigh_records.item_name → items_raw.Product)
+ *   - closest ClosedAt within ±30 minutes of weighed_at
+ *
+ * Single MERGE — no per-row updates (which were burning quota).
+ *
+ * Item name mapping (weigh side → Square Product):
+ *   Small (Cup) | Small (Cone)                 → Small Scoop
+ *   Regular (Cup) | Regular (Cone)             → Regular Scoop
+ *   Large (Cup)                                → Large Scoop
+ *   Small (Waffle Cone) | Small (Waffle Bowl)  → Small Waffle
+ *   Regular (Waffle Cone) | Regular (Waffle Bowl) → Regular Waffle
+ *   Large (Waffle Cone) | Large (Waffle Bowl)  → Large Waffle
+ *   Kids Scoop (Cup) | Kids Scoop (Cone)       → Kids Menu Small
+ *   Kids Waffle                                → Kids Menu Small Waffle
+ *   Old School Kiddie (Cup) | Old School Kiddie (Cone) → Old School Kiddie
+ *   Regular Sundae / Large Sundae / Banana Split → same names
+ */
+function matchWeighRecords() {
+  var projectId = 'vivid-monitor-448419-s4';
+  
+  // Translate weigh_records.item_name into the matching items_raw.Product name.
+  var mapItemNameSql =
+    "CASE w.item_name " +
+    "  WHEN 'Small (Cup)'              THEN 'Small Scoop' " +
+    "  WHEN 'Small (Cone)'             THEN 'Small Scoop' " +
+    "  WHEN 'Regular (Cup)'            THEN 'Regular Scoop' " +
+    "  WHEN 'Regular (Cone)'           THEN 'Regular Scoop' " +
+    "  WHEN 'Large (Cup)'              THEN 'Large Scoop' " +
+    "  WHEN 'Small (Waffle Cone)'      THEN 'Small Waffle' " +
+    "  WHEN 'Small (Waffle Bowl)'      THEN 'Small Waffle' " +
+    "  WHEN 'Regular (Waffle Cone)'    THEN 'Regular Waffle' " +
+    "  WHEN 'Regular (Waffle Bowl)'    THEN 'Regular Waffle' " +
+    "  WHEN 'Large (Waffle Cone)'      THEN 'Large Waffle' " +
+    "  WHEN 'Large (Waffle Bowl)'      THEN 'Large Waffle' " +
+    "  WHEN 'Kids Scoop (Cup)'         THEN 'Kids Menu Small' " +
+    "  WHEN 'Kids Scoop (Cone)'        THEN 'Kids Menu Small' " +
+    "  WHEN 'Kids Waffle'              THEN 'Kids Menu Small Waffle' " +
+    "  WHEN 'Old School Kiddie (Cup)'  THEN 'Old School Kiddie' " +
+    "  WHEN 'Old School Kiddie (Cone)' THEN 'Old School Kiddie' " +
+    "  ELSE w.item_name " +  // sundaes/banana split match by exact name already
+    "END";
+  
+  // Single MERGE: find closest match for each unmatched weighing within ±30 min
+  // and stamp transaction_id in one BigQuery job.
+  var mergeQuery =
+    "MERGE `vivid-monitor-448419-s4.operations.weigh_records` AS w " +
+    "USING ( " +
+    "  WITH potential_matches AS ( " +
+    "    SELECT " +
+    "      w.id AS weigh_id, " +
+    "      i.OrderId AS order_id, " +
+    "      ROW_NUMBER() OVER ( " +
+    "        PARTITION BY w.id " +
+    "        ORDER BY ABS(TIMESTAMP_DIFF(i.ClosedAt, w.weighed_at, SECOND)) " +
+    "      ) AS rn " +
+    "    FROM `vivid-monitor-448419-s4.operations.weigh_records` w " +
+    "    JOIN `vivid-monitor-448419-s4.operations.items_raw` i " +
+    "      ON i.Product = (" + mapItemNameSql + ") " +
+    "      AND w.location = i.Location " +
+    "    WHERE w.transaction_id IS NULL " +
+    "      AND w.target_oz IS NOT NULL " +
+    "      AND w.weight_oz IS NOT NULL " +
+    // Skip rows still in BigQuery's streaming buffer (~90 min after insert).
+    // Without this filter, MERGE fails with "streaming buffer not supported".
+    "      AND w.weighed_at < TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 HOUR) " +
+    "      AND i.ClosedAt >= TIMESTAMP_SUB(w.weighed_at, INTERVAL 30 MINUTE) " +
+    "      AND i.ClosedAt <= TIMESTAMP_ADD(w.weighed_at, INTERVAL 30 MINUTE) " +
+    "      AND COALESCE(i.PaymentOrRefund, 1) = 1 " +
+    "  ) " +
+    "  SELECT weigh_id, order_id FROM potential_matches WHERE rn = 1 " +
+    ") AS m " +
+    "ON w.id = m.weigh_id " +
+    "WHEN MATCHED THEN " +
+    "  UPDATE SET transaction_id = m.order_id, matched_at = CURRENT_TIMESTAMP()";
+  
+  try {
+    var result = BigQuery.Jobs.query({ query: mergeQuery, useLegacySql: false }, projectId);
+    var affected = result && result.numDmlAffectedRows ? parseInt(result.numDmlAffectedRows, 10) : 0;
+    Logger.log('Matched ' + affected + ' weigh records');
+    return { matched: affected };
+  } catch (e) {
+    Logger.log('matchWeighRecords failed: ' + e.message);
+    throw e;
+  }
+}
 
-        /* PIN LOGIN */
-        .login-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:15px;padding:20px}
-        .login-title{font-size:1.4rem;color:var(--accent);font-weight:700}
-        .login-subtitle{font-size:0.9rem;color:var(--text-dim);text-align:center}
-        .pin-display{display:flex;gap:12px;margin:10px 0}
-        .pin-dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--accent);background:transparent;transition:all 0.15s}
-        .pin-dot.filled{background:var(--accent);border-color:var(--accent)}
-        .pin-dot.error{border-color:var(--danger);background:var(--danger)}
-        .pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px;width:100%}
-        .pin-key{background:var(--surface);border:none;color:var(--text);font-size:1.5rem;font-weight:700;padding:18px;border-radius:12px;cursor:pointer;font-family:inherit;transition:all 0.1s}
-        .pin-key:active{background:var(--accent);transform:scale(0.95)}
-        .pin-key.backspace{font-size:1.2rem;color:var(--text-dim)}
-        .pin-key.zero{grid-column:2}
-        .pin-status{font-size:0.85rem;color:var(--warning);min-height:20px;text-align:center}
+/**
+ * Test function - run manually to check matching
+ */
+function testMatchWeighRecords() {
+  var result = matchWeighRecords();
+  Logger.log('Result: ' + JSON.stringify(result));
+}
+/**
+ * Serve the Weigh Station UI
+ * Access via: your-web-app-url?page=weighstation
+ */
+function ws_doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('WeighStationUI')
+    .setTitle('JJOPS Weigh Station')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, user-scalable=no')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
 
-        /* NAME INPUT */
-        .name-input-screen{display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:20px;padding:30px}
-        .name-input-screen.active{display:flex}
-        .name-input{width:100%;max-width:350px;padding:15px;border-radius:12px;border:2px solid var(--accent);background:var(--surface);color:var(--text);font-size:1.2rem;font-family:inherit;text-align:center}
-        .name-input::placeholder{color:var(--text-dim)}
-        .name-submit-btn{width:100%;max-width:350px;padding:16px;border-radius:12px;border:none;background:var(--success);color:var(--bg);font-size:1.1rem;font-weight:800;cursor:pointer;font-family:inherit}
-        .name-submit-btn:disabled{opacity:0.4;cursor:not-allowed}
-        .scale-connect-btn-login{background:var(--surface-light);border:2px solid var(--accent);color:var(--text);padding:10px 20px;border-radius:12px;font-size:0.9rem;font-weight:600;cursor:pointer}
-        .scale-connect-btn-login:disabled{opacity:0.5}
+/**
+ * Save weigh records - called from UI via google.script.run
+ */
+function ws_saveWeighRecords(payload) {
+  var projectId = 'vivid-monitor-448419-s4';
+  var datasetId = 'operations';
+  var tableId = 'weigh_records';
+  
+  var rows = payload.items.map(function(item) {
+    return {
+      json: {
+        id: item.id,
+        location: payload.location,
+        employee_id: payload.employee_id,
+        employee_name: payload.employee_name,
+        item_name: item.item_name,
+        target_oz: item.target_oz,
+        weight_oz: item.weight_oz,
+        weighed_at: item.timestamp,
+        transaction_id: null,
+        matched_at: null
+      }
+    };
+  });
+  
+  BigQuery.Tabledata.insertAll({ rows: rows }, projectId, datasetId, tableId);
+  Logger.log('Saved ' + rows.length + ' weigh records');
+  return { success: true, count: rows.length };
+}
 
-        /* QUEUE BANNER — sits above claim-next screen or work screen */
-        .queue-banner{padding:10px 14px;font-weight:800;font-size:0.95rem;text-align:center;letter-spacing:0.02em;flex-shrink:0;display:none}
-        .queue-banner.show{display:block}
-        .queue-banner.calm{background:rgba(155,89,182,0.2);color:#d4b3e8;border-bottom:2px solid var(--accent)}
-        .queue-banner.warn{background:rgba(245,158,11,0.2);color:#fbbf24;border-bottom:2px solid var(--warning)}
-        .queue-banner.alert{background:rgba(239,68,68,0.25);color:#fca5a5;border-bottom:2px solid var(--danger);animation:bannerPulse 1.2s infinite;font-size:1.05rem}
-        @keyframes bannerPulse{0%,100%{opacity:1}50%{opacity:0.6}}
-        .queue-banner-age{font-size:0.8rem;font-weight:600;opacity:0.85;margin-top:2px}
+/**
+ * Get employees for dropdown - global access OR worked at location
+ */
+function ws_getEmployees(location) {
+  var projectId = 'vivid-monitor-448419-s4';
+  location = location || 'Garden of the Gods';
+  
+  var query = `
+    SELECT DISTINCT m.employeeId as id, m.employeeName_square as name
+    FROM \`vivid-monitor-448419-s4.operations.square_employees_mapping\` m
+    LEFT JOIN \`vivid-monitor-448419-s4.operations.items_raw\` i
+      ON m.employeeId_square = i.EmployeeId
+      AND i.Location = '${location}'
+      AND i.ClosedAt >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+    WHERE m.global_access = TRUE
+       OR i.EmployeeId IS NOT NULL
+    ORDER BY name
+  `;
+  
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  if (!result.rows) return [];
+  return result.rows.map(function(row) {
+    return { id: row.f[0].v, name: row.f[1].v };
+  });
+}
+/**
+ * Clear all weigh records - FOR TESTING ONLY
+ * Run manually from Apps Script editor
+ */
+function clearWeighRecords() {
+  var projectId = 'vivid-monitor-448419-s4';
+  
+  var query = 'DELETE FROM `' + projectId + '.operations.weigh_records` WHERE TRUE';
+  
+  var request = {
+    query: query,
+    useLegacySql: false
+  };
+  
+  try {
+    BigQuery.Jobs.query(request, projectId);
+    Logger.log('All weigh records deleted');
+  } catch (error) {
+    Logger.log('Error clearing weigh records: ' + error.message);
+  }
+}
+function checkRecentWeighs() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    SELECT id, location, employee_name, item_name, weight_oz, weighed_at, transaction_id
+    FROM \`vivid-monitor-448419-s4.operations.weigh_records\`
+    ORDER BY weighed_at DESC
+    LIMIT 10
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log(JSON.stringify(result.rows, null, 2));
+}
+function checkGGWeighs() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    SELECT id, location, employee_name, item_name, weight_oz, weighed_at
+    FROM \`vivid-monitor-448419-s4.operations.weigh_records\`
+    WHERE location LIKE '%GG%' OR location LIKE '%Garden%' OR location LIKE '%God%'
+    ORDER BY weighed_at DESC
+    LIMIT 10
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log(JSON.stringify(result.rows, null, 2));
+}
+function fixTestRecord() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    UPDATE \`vivid-monitor-448419-s4.operations.weigh_records\`
+    SET location = 'Garden of the Gods'
+    WHERE id = '1770322688982'
+  `;
+  BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log('Updated location to Garden of the Gods');
+}
+function insertTestWeighRecord() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var datasetId = 'operations';
+  var tableId = 'weigh_records';
+  
+  var now = new Date().toISOString();
+  
+  var rows = [{
+    json: {
+      id: 'test_gg_' + Date.now(),
+      location: 'Garden of the Gods',
+      employee_id: 'drake_wyman',  // Make sure this matches the mapping table
+      employee_name: 'Drake Wyman',
+      item_name: 'Small Scoop',
+      target_oz: 3.5,
+      weight_oz: 4.5,
+      weighed_at: now,
+      transaction_id: null,
+      matched_at: null
+    }
+  }];
+  
+  BigQuery.Tabledata.insertAll({ rows: rows }, projectId, datasetId, tableId);
+  Logger.log('Inserted test weigh record for Garden of the Gods');
+}
+function checkDrakeMapping() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    SELECT * FROM \`vivid-monitor-448419-s4.operations.square_employees_mapping\`
+    WHERE employeeName_square LIKE '%Drake%'
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log(JSON.stringify(result.rows, null, 2));
+}
+function insertTestWeighRecord() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var datasetId = 'operations';
+  var tableId = 'weigh_records';
+  
+  var now = new Date().toISOString();
+  
+  var rows = [{
+    json: {
+      id: 'test_gg_' + Date.now(),
+      location: 'Garden of the Gods',
+      employee_id: '1012',
+      employee_name: 'Drake Wyman',
+      item_name: 'Small Scoop',
+      target_oz: 3.5,
+      weight_oz: 4.5,
+      weighed_at: now,
+      transaction_id: null,
+      matched_at: null
+    }
+  }];
+  
+  BigQuery.Tabledata.insertAll({ rows: rows }, projectId, datasetId, tableId);
+  Logger.log('Inserted test weigh record for Garden of the Gods');
+}
+function checkRecentSquareItems() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    SELECT OrderId, Location, Product, EmployeeId, ClosedAt
+    FROM \`vivid-monitor-448419-s4.operations.items_raw\`
+    WHERE Location = 'Garden of the Gods'
+      AND Product = 'Small Scoop'
+    ORDER BY ClosedAt DESC
+    LIMIT 10
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log(JSON.stringify(result.rows, null, 2));
+}
+function matchWeighRecordsSimple() {
+  var projectId = 'vivid-monitor-448419-s4';
+  
+  // Find unmatched weigh records and their matching Square transactions
+  // Match on: location + item + time window (within 30 min)
+  var matchQuery = `
+    SELECT 
+      w.id as weigh_id,
+      i.OrderId as order_id,
+      TIMESTAMP_DIFF(i.ClosedAt, w.weighed_at, MINUTE) as minutes_diff
+    FROM \`vivid-monitor-448419-s4.operations.weigh_records\` w
+    JOIN \`vivid-monitor-448419-s4.operations.items_raw\` i
+      ON w.item_name = i.Product
+      AND w.location = i.Location
+    WHERE w.transaction_id IS NULL
+      AND i.ClosedAt >= TIMESTAMP_SUB(w.weighed_at, INTERVAL 30 MINUTE)
+      AND i.ClosedAt <= TIMESTAMP_ADD(w.weighed_at, INTERVAL 30 MINUTE)
+  `;
+  
+  var matchResults = BigQuery.Jobs.query({ query: matchQuery, useLegacySql: false }, projectId);
+  
+  Logger.log('Found matches: ' + JSON.stringify(matchResults.rows, null, 2));
+  return matchResults;
+}
+function findMyTestMatch() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    SELECT 
+      w.id as weigh_id,
+      w.item_name,
+      i.OrderId,
+      ABS(TIMESTAMP_DIFF(i.ClosedAt, w.weighed_at, SECOND)) as seconds_diff
+    FROM \`vivid-monitor-448419-s4.operations.weigh_records\` w
+    JOIN \`vivid-monitor-448419-s4.operations.items_raw\` i
+      ON w.item_name = i.Product
+      AND w.location = i.Location
+    WHERE w.location = 'Garden of the Gods'
+      AND w.transaction_id IS NULL
+    LIMIT 5
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log(JSON.stringify(result.rows, null, 2));
+}
+function matchWeighRecordsBatch() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var now = new Date().toISOString();
+  
+  var mergeQuery = `
+    MERGE \`vivid-monitor-448419-s4.operations.weigh_records\` w
+    USING (
+      WITH potential_matches AS (
+        SELECT 
+          w.id as weigh_id,
+          i.OrderId as order_id,
+          ROW_NUMBER() OVER (PARTITION BY w.id ORDER BY ABS(TIMESTAMP_DIFF(i.ClosedAt, w.weighed_at, SECOND))) as rn
+        FROM \`vivid-monitor-448419-s4.operations.weigh_records\` w
+        JOIN \`vivid-monitor-448419-s4.operations.items_raw\` i
+          ON w.item_name = i.Product
+          AND w.location = i.Location
+        WHERE w.transaction_id IS NULL
+          AND i.ClosedAt >= TIMESTAMP_SUB(w.weighed_at, INTERVAL 30 MINUTE)
+          AND i.ClosedAt <= TIMESTAMP_ADD(w.weighed_at, INTERVAL 30 MINUTE)
+      )
+      SELECT weigh_id, order_id
+      FROM potential_matches
+      WHERE rn = 1
+    ) m
+    ON w.id = m.weigh_id
+    WHEN MATCHED THEN
+      UPDATE SET 
+        transaction_id = m.order_id,
+        matched_at = TIMESTAMP('${now}')
+  `;
+  
+  try {
+    var result = BigQuery.Jobs.query({ query: mergeQuery, useLegacySql: false }, projectId);
+    Logger.log('Batch match complete. Rows affected: ' + (result.numDmlAffectedRows || 'unknown'));
+    return { matched: result.numDmlAffectedRows || 0 };
+  } catch (e) {
+    Logger.log('Error: ' + e.message);
+    return { error: e.message };
+  }
+}
+function checkEmployeeMappingSchema() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    SELECT * FROM \`vivid-monitor-448419-s4.operations.square_employees_mapping\`
+    LIMIT 5
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log(JSON.stringify(result.schema.fields, null, 2));
+  Logger.log(JSON.stringify(result.rows, null, 2));
+}
+function addGlobalAccessColumn() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    ALTER TABLE \`vivid-monitor-448419-s4.operations.square_employees_mapping\`
+    ADD COLUMN IF NOT EXISTS global_access BOOL DEFAULT FALSE
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log('Column added');
+}
+function addGlobalAccessColumn() {
+  var projectId = 'vivid-monitor-448419-s4';
+  
+  // Step 1: Add column
+  BigQuery.Jobs.query({ 
+    query: `ALTER TABLE \`vivid-monitor-448419-s4.operations.square_employees_mapping\` ADD COLUMN global_access BOOL`,
+    useLegacySql: false 
+  }, projectId);
+  Logger.log('Step 1: Column added');
+  
+  // Step 2: Set default
+  BigQuery.Jobs.query({ 
+    query: `ALTER TABLE \`vivid-monitor-448419-s4.operations.square_employees_mapping\` ALTER COLUMN global_access SET DEFAULT FALSE`,
+    useLegacySql: false 
+  }, projectId);
+  Logger.log('Step 2: Default set');
+  
+  // Step 3: Set existing rows to false
+  BigQuery.Jobs.query({ 
+    query: `UPDATE \`vivid-monitor-448419-s4.operations.square_employees_mapping\` SET global_access = FALSE WHERE TRUE`,
+    useLegacySql: false 
+  }, projectId);
+  Logger.log('Step 3: Existing rows updated');
+}
+function setGlobalAccessEmployees() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    UPDATE \`vivid-monitor-448419-s4.operations.square_employees_mapping\`
+    SET global_access = TRUE
+    WHERE LOWER(employeeName_square) LIKE '%brian ortiz%'
+       OR LOWER(employeeName_square) LIKE '%drake wyman%'
+       OR LOWER(employeeName_square) LIKE '%michaela wren%'
+       OR LOWER(employeeName_square) LIKE '%olivia chavari%'
+       OR LOWER(employeeName_square) LIKE '%john krakauer%'
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log('Updated: ' + (result.numDmlAffectedRows || 'unknown') + ' rows');
+}
+function checkMappingColumns() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `SELECT * FROM \`vivid-monitor-448419-s4.operations.square_employees_mapping\` LIMIT 1`;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log('Columns: ' + JSON.stringify(result.schema.fields.map(f => f.name)));
+}
+function updateWeighRecordsSchema() {
+  var projectId = 'vivid-monitor-448419-s4';
+  
+  // Add order_id column
+  try {
+    BigQuery.Jobs.query({ 
+      query: `ALTER TABLE \`vivid-monitor-448419-s4.operations.weigh_records\` ADD COLUMN order_id STRING`,
+      useLegacySql: false 
+    }, projectId);
+    Logger.log('Added order_id column');
+  } catch(e) {
+    Logger.log('order_id column may already exist: ' + e.message);
+  }
+  
+  // Add skip_reason column
+  try {
+    BigQuery.Jobs.query({ 
+      query: `ALTER TABLE \`vivid-monitor-448419-s4.operations.weigh_records\` ADD COLUMN skip_reason STRING`,
+      useLegacySql: false 
+    }, projectId);
+    Logger.log('Added skip_reason column');
+  } catch(e) {
+    Logger.log('skip_reason column may already exist: ' + e.message);
+  }
+  
+  // Add skipped column (boolean)
+  try {
+    BigQuery.Jobs.query({ 
+      query: `ALTER TABLE \`vivid-monitor-448419-s4.operations.weigh_records\` ADD COLUMN skipped BOOL`,
+      useLegacySql: false 
+    }, projectId);
+    Logger.log('Added skipped column');
+  } catch(e) {
+    Logger.log('skipped column may already exist: ' + e.message);
+  }
+  
+  // Add flavors column
+  try {
+    BigQuery.Jobs.query({ 
+      query: `ALTER TABLE \`vivid-monitor-448419-s4.operations.weigh_records\` ADD COLUMN flavors STRING`,
+      useLegacySql: false 
+    }, projectId);
+    Logger.log('Added flavors column');
+  } catch(e) {
+    Logger.log('flavors column may already exist: ' + e.message);
+  }
+}
+function createOrderQueueTab() {
+  var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+  
+  // Check if tab already exists
+  var sheet = ss.getSheetByName('OrderQueue');
+  if (sheet) {
+    Logger.log('OrderQueue tab already exists');
+    return;
+  }
+  
+  // Create new tab
+  sheet = ss.insertSheet('OrderQueue');
+  
+  // Set headers
+  var headers = ['order_id', 'created_at', 'location', 'items_json', 'claimed_by', 'claimed_at', 'completed_at'];
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  
+  // Format header row
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight('bold')
+    .setBackground('#9335B6')
+    .setFontColor('#ffffff');
+  
+  // Set column widths
+  sheet.setColumnWidth(1, 200);  // order_id
+  sheet.setColumnWidth(2, 180);  // created_at
+  sheet.setColumnWidth(3, 150);  // location
+  sheet.setColumnWidth(4, 400);  // items_json
+  sheet.setColumnWidth(5, 150);  // claimed_by
+  sheet.setColumnWidth(6, 180);  // claimed_at
+  sheet.setColumnWidth(7, 180);  // completed_at
+  
+  // Freeze header row
+  sheet.setFrozenRows(1);
+  
+  Logger.log('OrderQueue tab created');
+}
+// ============ ORDER QUEUE FUNCTIONS ============
 
-        /* CLAIM NEXT SCREEN */
-        .claim-next-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
-        .claim-next-screen.active{display:flex}
-        .claim-next-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;gap:24px}
-        .claim-next-empty{color:var(--text-dim);font-size:1.05rem;text-align:center;line-height:1.5;max-width:360px}
-        .claim-next-empty .big-icon{font-size:3.5rem;margin-bottom:8px}
-        .claim-next-btn{width:100%;max-width:380px;padding:28px;border-radius:18px;border:none;background:var(--accent);color:#fff;font-size:1.5rem;font-weight:900;cursor:pointer;font-family:inherit;letter-spacing:0.05em;box-shadow:0 6px 20px rgba(155,89,182,0.35);transition:transform 0.1s}
-        .claim-next-btn:active{transform:scale(0.97)}
-        .claim-next-btn:disabled{opacity:0.5;cursor:not-allowed;background:var(--surface-light);box-shadow:none}
-        .claim-next-msg{font-size:0.9rem;color:var(--warning);text-align:center;min-height:20px;max-width:360px;font-weight:600}
-        .override-link{font-size:0.85rem;color:var(--text-dim);text-decoration:underline;cursor:pointer;padding:8px;margin-top:20px}
-        .override-link:active{color:var(--text)}
+var ORDER_QUEUE_SHEET_ID = '1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM';
+var ORDER_QUEUE_TAB = 'OrderQueue';
+var MAX_PRIORITY_SLOTS = 3;  // Hard cap on concurrent priority (claimed & not completed) orders
 
-        /* OVERRIDE MODAL */
-        .override-list{display:flex;flex-direction:column;gap:8px;margin:10px 0 20px;max-height:300px;overflow-y:auto}
-        .override-order-btn{padding:14px;border-radius:10px;border:2px solid var(--surface-light);background:var(--bg);color:var(--text);font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;text-align:left}
-        .override-order-btn:active{border-color:var(--accent)}
-        .override-empty{color:var(--text-dim);padding:20px;text-align:center;font-size:0.9rem}
+/**
+ * Add order to queue (called from Queue Buster)
+ */
+function ws_addOrder(orderData) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  
+  var orderId = orderData.order_id || generateOrderId(orderData.location);
+  var now = new Date().toISOString();
+  
+  // Store metadata in items_json alongside items array
+  var payload = {
+    items: orderData.items || [],
+    all_items: orderData.all_items || [],
+    car_name: orderData.car_name || '',
+    notes: orderData.notes || '',
+    payment_type: orderData.payment_type || '',
+    order_type: orderData.order_type || 'DRIVE-THRU',
+    order_group_count: orderData.order_group_count || 1
+  };
+  
+  // tablet_mode: 'OUTDOOR' (default, existing flow) or 'WINDOW' (order taken at window —
+  //   payment is collected in place, so paid_at_car = YES immediately and no HOLD).
+  var tabletMode = (orderData.tablet_mode === 'WINDOW') ? 'WINDOW' : 'OUTDOOR';
+  var isWindowMode = (tabletMode === 'WINDOW');
 
-        /* TABS */
-        .tab-bar{display:flex;background:var(--surface);border-bottom:2px solid rgba(255,255,255,0.08);flex-shrink:0}
-        .tab-btn{flex:1;padding:11px;text-align:center;font-size:0.9rem;font-weight:700;cursor:pointer;color:var(--text-dim);border-bottom:3px solid transparent;transition:all 0.2s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
-        .tab-btn.active{color:#fff;border-bottom-color:var(--accent)}
+  // Pre-block printing for card pay-at-car orders — will be unblocked after payment collected.
+  // In WINDOW mode, payment is already collected at submission time, so we never hold.
+  var holdPrint = (!isWindowMode && orderData.payment_type === 'CARD' && orderData.order_type === 'DRIVE-THRU' && orderData.hold_for_payment === true)
+    ? 'HOLD'
+    : '';
 
-        .order-list{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-        .order-card{background:var(--surface);border-radius:12px;padding:14px 16px;cursor:pointer;transition:all 0.15s;border:2px solid transparent}
-        .order-card:active{transform:scale(0.98)}
-        .order-card.completed{border-color:rgba(74,222,128,0.4);opacity:0.8;background:rgba(74,222,128,0.06)}
-        .order-card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-        .order-card-car{font-weight:800;font-size:1.1rem}
-        .order-card-time{font-size:0.8rem;color:var(--text-dim)}
-        .work-item-allergy{background:#dc2626;color:white;padding:8px 12px;border-radius:8px;margin-top:6px;font-weight:900;font-size:1.05rem;letter-spacing:0.5px;animation:allergyPulse 1.5s infinite}
-        @keyframes allergyPulse{0%,100%{opacity:1}50%{opacity:0.7}}
-        .no-orders{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);gap:10px}
-        .no-orders .icon{font-size:3rem} .no-orders .msg{font-size:1.1rem}
-        .poll-status{font-size:0.75rem;color:var(--text-dim);text-align:center;padding:8px;flex-shrink:0}
+  // In WINDOW mode, paid_at_car is YES at submission (they're paying right there).
+  var paidAtCarValue = isWindowMode ? 'YES' : '';
 
-        /* ORDER WORK */
-        .order-work-screen{display:none;flex:1;flex-direction:column;overflow:hidden}
-        .order-work-screen.active{display:flex}
-        .work-header{background:var(--surface);padding:10px 15px;border-bottom:1px solid rgba(255,255,255,0.1)}
-        .work-header-top{display:flex;justify-content:space-between;align-items:center}
-        .work-car{font-weight:800;font-size:1.2rem}
-        .work-back-btn{background:var(--surface-light);border:none;color:var(--text);padding:8px 14px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer}
-        .work-meta{font-size:0.8rem;color:var(--text-dim);margin-top:4px}
-        .work-notes{font-size:0.85rem;color:var(--warning);font-weight:600;margin-top:4px}
-        .work-order-type-badge{display:inline-block;padding:5px 12px;border-radius:20px;font-size:0.85rem;font-weight:800;margin-top:6px;letter-spacing:0.03em}
-        .work-order-type-badge.walkup{background:#0ea5e9;color:white}
-        .work-order-type-badge.drivethru{background:#f59e0b;color:#1a1a2e}
-        .scale-bar{background:var(--surface);padding:8px 15px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,0.1)}
-        .scale-weight{font-size:1.8rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:80px}
-        .scale-weight .unit{font-size:0.9rem;color:var(--text-dim);font-weight:600}
-        .scale-feedback{flex:1;text-align:center;font-weight:700;font-size:1rem}
-        .scale-connect-btn{background:var(--accent);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer}
-        .scale-reconnect-btn{background:var(--danger);border:none;color:white;padding:8px 16px;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer;animation:staleFlash 1.5s infinite}
+  sheet.appendRow([
+    orderId,
+    now,
+    orderData.location,
+    JSON.stringify(payload),
+    '',
+    '',
+    '',
+    orderData.car_name || '',
+    orderData.notes || '',
+    orderData.payment_type || '',
+    paidAtCarValue,
+    orderData.order_type || 'DRIVE-THRU',
+    holdPrint
+  ]);
+  
+  // appendRow only wrote columns A–M (13 cols). tablet_mode is column S (19).
+  // Look up by header name so this doesn't break if column order changes.
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var tabletModeCol = headers.indexOf('tablet_mode');
+  if (tabletModeCol >= 0) {
+    sheet.getRange(sheet.getLastRow(), tabletModeCol + 1).setValue(tabletMode);
+  }
+  
+  return { success: true, order_id: orderId };
+}
 
-        /* MAKE TIMER */
-        .make-timer{font-size:1.4rem;font-weight:900;letter-spacing:1px;font-variant-numeric:tabular-nums;padding:4px 10px;border-radius:8px;background:rgba(0,0,0,0.2)}
+/**
+ * Generate order ID: GG-20260206-143052
+ */
+function generateOrderId(location) {
+  var now = new Date();
+  var prefix = 'GG';
+  if (location === 'Downtown') prefix = 'DT';
+  else if (location === 'Creekwalk') prefix = 'CW';
+  
+  var date = Utilities.formatDate(now, 'America/Denver', 'yyyyMMdd');
+  var time = Utilities.formatDate(now, 'America/Denver', 'HHmmss');
+  
+  return prefix + '-' + date + '-' + time;
+}
 
-        /* ITEMS GRID */
-        .items-scroll{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-content:start}
-        .section-label{grid-column:1 / -1;font-size:0.95rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;padding:8px 4px 4px;display:flex;align-items:center;gap:8px}
-        .section-label.weigh{color:var(--weigh-color)} .section-label.prep{color:var(--prep-color)}
-        .work-item{background:var(--surface);border-radius:12px;padding:16px 18px;cursor:pointer;transition:all 0.15s;border-left:5px solid var(--surface-light);min-height:80px;display:flex;flex-direction:column;justify-content:center}
-        .work-item:active{transform:scale(0.98)}
-        .work-item.weigh-item{border-left-color:var(--weigh-color);background:rgba(59,130,246,0.12);border:2px solid rgba(59,130,246,0.3);border-left:5px solid var(--weigh-color)}
-        .work-item.prep-item{border-left-color:var(--prep-color);background:rgba(139,92,246,0.08);border:2px solid rgba(139,92,246,0.2);border-left:5px solid var(--prep-color)}
-        .work-item.done{opacity:0.5;background:rgba(74,222,128,0.1);border-color:rgba(74,222,128,0.2);border-left-color:var(--success)}
-        .work-item.priority{border:2px solid #f59e0b !important;border-left:5px solid #f59e0b !important;background:rgba(245,158,11,0.15) !important;box-shadow:0 0 0 2px rgba(245,158,11,0.25);animation:priorityPulse 2s infinite}
-        .work-item.priority.done{animation:none;box-shadow:none;opacity:0.5}
-        .work-item.locked{opacity:0.4;cursor:not-allowed}
-        .work-item.locked:active{transform:none}
-        .priority-badge{display:inline-block;background:#f59e0b;color:#1a1a2e;font-size:0.7rem;font-weight:900;padding:2px 8px;border-radius:6px;letter-spacing:0.05em;margin-left:6px;vertical-align:middle}
-        .locked-hint{font-size:0.85rem;color:#f59e0b;font-weight:700;margin-top:6px}
-        @keyframes priorityPulse{0%,100%{box-shadow:0 0 0 2px rgba(245,158,11,0.25)}50%{box-shadow:0 0 0 4px rgba(245,158,11,0.5)}}
-        .work-item-top{display:flex;justify-content:space-between;align-items:center}
-        .work-item-name{font-weight:800;font-size:1.25rem} .work-item-target{font-size:1rem;color:var(--text-dim);font-weight:700}
-        .work-item-flavors{font-size:1.15rem;color:var(--text-dim);margin-top:4px;font-weight:600}
-        .work-item-mod{font-size:1rem;color:var(--text-dim);margin-top:2px;padding-left:12px;font-weight:500}
-        .work-item-note{font-size:1rem;color:var(--warning);font-weight:700;margin-top:4px}
-        .work-item-weight{font-size:1rem;font-weight:700;margin-top:6px}
-        .work-item-weight.good{color:var(--success)} .work-item-weight.over{color:var(--danger)} .work-item-weight.under{color:var(--warning)}
-        .item-check{font-size:1.8rem;color:var(--success)} .item-type-icon{font-size:1rem;margin-right:4px}
-        .work-footer{padding:10px 15px;border-top:1px solid rgba(255,255,255,0.1)}
-        .complete-btn{width:100%;padding:16px;border-radius:12px;border:none;font-family:inherit;font-size:1.1rem;font-weight:800;cursor:pointer}
-        .complete-btn.ready{background:var(--success);color:var(--bg)} .complete-btn.partial{background:var(--warning);color:var(--bg)}
-        .complete-btn:disabled{opacity:0.4;cursor:not-allowed;background:var(--surface-light);color:var(--text-dim)}
-        .work-item-sprinkles{font-size:1rem;color:#16a34a;font-weight:700;margin-top:4px}
+/**
+ * Get all active orders (unclaimed + in-progress)
+ */
+function ws_getPendingOrders(location) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  
+  var thirtyMinAgo = new Date(Date.now() - 240 * 60 * 1000);
+  var orders = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var orderLocation = row[2];
+    var claimedBy = row[4];
+    var completedAt = row[6];
+    
+    if (orderLocation !== location) continue;
+    
+    // Skip orders completed more than 30 minutes ago
+    if (completedAt) {
+      var completedDate = new Date(completedAt);
+      if (completedDate < thirtyMinAgo) continue;
+    }
+    
+    var parsed = JSON.parse(row[3] || '{}');
+    var items, allItems, carName, notes, paymentType;
+    if (Array.isArray(parsed)) {
+      items = parsed;
+      allItems = parsed;
+      carName = '';
+      notes = '';
+      paymentType = '';
+    } else {
+      items = parsed.items || [];
+      allItems = parsed.all_items || parsed.items || [];
+      carName = parsed.car_name || '';
+      notes = parsed.notes || '';
+      paymentType = parsed.payment_type || '';
+    }
+    var headers = data[0];
+    var paidAtCarCol = headers.indexOf('paid_at_car');
+    var paidAtCar = paidAtCarCol >= 0 ? (row[paidAtCarCol] || null) : null;
+    var orderTypeCol = headers.indexOf('order_type');
+    var orderType = orderTypeCol >= 0 ? (row[orderTypeCol] || 'DRIVE-THRU') : (parsed.order_type || 'DRIVE-THRU');
+    var sentToWindowCol = headers.indexOf('sent_to_window');
+    var sentToWindow = sentToWindowCol >= 0 ? (row[sentToWindowCol] || null) : null;
+    var pickedUpAtCol = headers.indexOf('picked_up_at');
+    var pickedUpAt = pickedUpAtCol >= 0 ? (row[pickedUpAtCol] || null) : null;
+    var paidAtWindowCol = headers.indexOf('paid_at_window');
+    var paidAtWindow = paidAtWindowCol >= 0 ? (row[paidAtWindowCol] || null) : null;
+    var starPrintedCol = headers.indexOf('star_printed');
+    var starPrinted = starPrintedCol >= 0 ? (row[starPrintedCol] || null) : null;
 
-        /* MODALS */
-        .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;z-index:200}
-        .modal-overlay.show{display:flex}
-        .modal-content{background:var(--surface);border-radius:16px;padding:25px;max-width:350px;width:90%;text-align:center}
-        .modal-icon{font-size:3rem;margin-bottom:10px} .modal-title{font-size:1.3rem;font-weight:700;margin-bottom:8px}
-        .modal-weight{font-size:2rem;font-weight:800;margin-bottom:4px}
-        .modal-target{font-size:0.9rem;color:var(--text-dim);margin-bottom:15px}
-        .modal-message{font-size:0.9rem;color:var(--text-dim);margin-bottom:20px;line-height:1.4}
-        .modal-buttons{display:flex;gap:10px}
-        .modal-btn{flex:1;padding:14px;border:none;border-radius:10px;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer}
-        .modal-btn.primary{background:var(--accent);color:white} .modal-btn.secondary{background:var(--surface-light);color:white}
-        .modal-btn.danger{background:var(--danger);color:white}
-        .warning-under{color:var(--warning)} .warning-over{color:var(--danger)}
-        .skip-reasons{display:flex;flex-direction:column;gap:8px;margin-bottom:15px}
-        .skip-reason-btn{padding:12px;border-radius:10px;border:2px solid var(--surface-light);background:transparent;color:var(--text);font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;text-align:left}
-        .skip-reason-btn.selected{border-color:var(--accent);background:rgba(155,89,182,0.2)}
+    orders.push({
+      row: i + 1,
+      order_id: row[0],
+      created_at: row[1],
+      location: row[2],
+      items: items,
+      all_items: allItems,
+      car_name: carName,
+      notes: notes,
+      payment_type: paymentType,
+      order_type: orderType,
+      claimed_by: claimedBy || null,
+      claimed_at: row[5] || null,
+      completed_at: completedAt || null,
+      paid_at_car: paidAtCar,
+      sent_to_window: sentToWindow,
+      picked_up_at: pickedUpAt,
+      paid_at_window: paidAtWindow,
+      star_printed: starPrinted,
+      order_group_count: parsed.order_group_count || 1
+    });
+  }
+  
+  return orders;
+}
 
-        /* TOAST */
-        .toast{position:fixed;top:100px;left:50%;transform:translateX(-50%) translateY(-200px);background:var(--success);color:var(--bg);padding:15px 30px;border-radius:12px;font-weight:600;font-size:1.1rem;transition:transform 0.3s;z-index:300;white-space:nowrap;max-width:90%}
-        .toast.error{background:var(--danger);color:white} .toast.show{transform:translateX(-50%) translateY(0)}
-    </style>
-</head>
-<body>
-    <header class="header">
-        <h1>⚖️ <span>Weigh Station</span></h1>
-        <div class="header-right">
-            <span class="scale-indicator" id="scaleIndicator" title="Tap to reconnect scale">No Scale</span>
-            <span class="employee-badge" id="employeeBadge" style="display:none;"></span>
-            <button class="logout-btn" id="logoutBtn" style="display:none;">Logout</button>
-        </div>
-    </header>
+/**
+ * Claim an order
+ */
+// Employees with override permission — can claim orders already claimed by someone else
+var OVERRIDE_EMPLOYEES = [
+  'EMP-1224',  // John Krakauer
+  'EMP-2309',  // Brian Ortiz
+  'EMP-7112',  // Drake Wyman
+  'EMP-6982',  // Olivia Chavarria
+  'EMP-4372',  // Micah Molascon
+  'EMP-3667'   // Caymen Hook
+];
 
-    <!-- PIN LOGIN -->
-    <div class="login-screen" id="loginScreen">
-        <div class="login-title" id="loginTitle">Enter Your PIN</div>
-        <div class="login-subtitle" id="loginSubtitle">Use your Square PIN</div>
-        <div class="pin-display" id="pinDisplay">
-            <div class="pin-dot" id="dot0"></div>
-            <div class="pin-dot" id="dot1"></div>
-            <div class="pin-dot" id="dot2"></div>
-            <div class="pin-dot" id="dot3"></div>
-        </div>
-        <div class="pin-status" id="pinStatus"></div>
-        <div class="pin-pad" id="pinPad">
-            <button class="pin-key" data-key="1">1</button>
-            <button class="pin-key" data-key="2">2</button>
-            <button class="pin-key" data-key="3">3</button>
-            <button class="pin-key" data-key="4">4</button>
-            <button class="pin-key" data-key="5">5</button>
-            <button class="pin-key" data-key="6">6</button>
-            <button class="pin-key" data-key="7">7</button>
-            <button class="pin-key" data-key="8">8</button>
-            <button class="pin-key" data-key="9">9</button>
-            <button class="pin-key backspace" data-key="back">⌫</button>
-            <button class="pin-key zero" data-key="0">0</button>
-            <button class="pin-key backspace" data-key="clear">C</button>
-        </div>
-        <button class="scale-connect-btn-login" id="loginScaleBtn">Connect Scale</button>
-    </div>
+/**
+ * Atomically claim the oldest unclaimed order for this employee.
+ * Enforces the priority caps:
+ *   - Max MAX_PRIORITY_SLOTS priority orders system-wide at this location
+ *   - Max 1 priority order per employee
+ * This is a single-pass scan that both checks caps and claims in one
+ * critical section, so two scoopers tapping "Claim Next" at the same
+ * instant can't both win.
+ * Returns: { success, order_id, items, ... } or { success: false, reason }
+ */
+function ws_claimNextOrder(location, employeeId, employeeName) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
 
-    <!-- NAME INPUT -->
-    <div class="name-input-screen" id="nameInputScreen">
-        <div class="login-title">Welcome! Enter Your Name</div>
-        <div class="login-subtitle">This PIN hasn't been used before</div>
-        <input type="text" class="name-input" id="nameInput" placeholder="First and Last Name" autocomplete="off">
-        <button class="name-submit-btn" id="nameSubmitBtn" disabled>REGISTER & START</button>
-    </div>
+  var oldestIdx = -1;
+  var oldestTime = null;
 
-    <!-- CLAIM NEXT SCREEN (replaces the old order list for non-override claims) -->
-    <div class="claim-next-screen" id="claimNextScreen">
-        <div class="queue-banner" id="queueBannerClaim"></div>
-        <div class="tab-bar">
-            <button class="tab-btn active" id="tabClaimNext" onclick="switchTab('claimNext')">⚡ Next Order</button>
-            <button class="tab-btn" id="tabCompleted" onclick="switchTab('completed')">✓ Completed</button>
-        </div>
-        <div id="claimNextContent" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
-            <div class="claim-next-body">
-                <div class="claim-next-empty" id="claimNextEmpty" style="display:none;">
-                    <div class="big-icon">🎉</div>
-                    <div>No orders in queue</div>
-                    <div style="font-size:0.85rem;margin-top:4px;opacity:0.7;">Waiting for the next one...</div>
-                </div>
-                <button class="claim-next-btn" id="claimNextBtn" style="display:none;">⚡ Claim Next Order</button>
-                <div class="claim-next-msg" id="claimNextMsg"></div>
-                <div class="override-link" id="overrideLink" style="display:none;" onclick="openOverrideModal()">🔓 Take over another order (manager)</div>
-            </div>
-        </div>
-        <div id="completedContent" style="flex:1;display:none;flex-direction:column;overflow:hidden;">
-            <div class="order-list" id="completedList"></div>
-        </div>
-        <div class="poll-status" id="pollStatus">Checking for orders...</div>
-    </div>
+  // Single pass: find oldest unclaimed order at this location
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var orderLocation = row[2];
+    var claimedBy = row[4];
+    var claimedAt = row[5];
+    var completedAt = row[6];
 
-    <!-- ORDER WORK -->
-    <div class="order-work-screen" id="orderWorkScreen">
-        <div class="queue-banner" id="queueBannerWork"></div>
-        <div class="work-header">
-            <div class="work-header-top">
-                <span class="work-car" id="workCar"></span>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span class="make-timer" id="queueTimer" style="display:none;" title="Time since order was created"></span>
-                    <span class="make-timer" id="makeTimer" style="display:none;" title="Time since you claimed this order"></span>
-                </div>
-            </div>
-            <div class="work-meta" id="workMeta"></div>
-            <div class="work-notes" id="workNotes"></div>
-            <div id="workOrderTypeBadge"></div>
-        </div>
-        <div class="scale-bar" id="scaleBar">
-            <div class="scale-weight"><span id="currentWeight">0.0</span><span class="unit"> oz</span></div>
-            <div class="scale-feedback" id="scaleFeedback"></div>
-            <button class="scale-connect-btn" id="connectScaleBtn">Connect Scale</button>
-            <button class="scale-reconnect-btn" id="reconnectScaleBtn" style="display:none;">⚠ Reconnect Scale</button>
-        </div>
-        <div class="items-scroll" id="itemsScroll"></div>
-        <div class="work-footer"><button class="complete-btn" id="completeBtn" disabled>COMPLETE ORDER</button></div>
-    </div>
+    if (orderLocation !== location) continue;
+    if (completedAt) continue;
+    if (claimedBy && claimedAt) continue;  // already claimed by someone
 
-    <!-- WEIGHT WARNING MODAL -->
-    <div class="modal-overlay" id="weightWarningModal"><div class="modal-content" style="position:relative;">
-        <button id="weightWarningClose" style="position:absolute;top:10px;right:10px;background:rgba(255,255,255,0.15);border:none;color:var(--text);width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
-        <div class="modal-icon" id="warningIcon">⚠️</div>
-        <div class="modal-title" id="warningTitle">UNDER WEIGHT</div>
-        <div class="modal-weight" id="warningWeight">0.0 oz</div>
-        <div class="modal-target" id="warningTarget">Target: 0.0 oz</div>
-        <div class="modal-message" id="warningMessage"></div>
-        <div class="modal-buttons"><button class="modal-btn primary" id="reweighBtn">Add & Re-weigh</button><button class="modal-btn secondary" id="acceptWeightBtn">Accept</button></div>
-    </div></div>
+    // Unclaimed — candidate for oldest-queued
+    var createdAt = row[1];
+    if (createdAt) {
+      var t = new Date(createdAt).getTime();
+      if (oldestTime === null || t < oldestTime) {
+        oldestTime = t;
+        oldestIdx = i;
+      }
+    }
+  }
 
-    <!-- SKIP WARNING MODAL -->
-    <div class="modal-overlay" id="skipWarningModal"><div class="modal-content">
-        <div class="modal-icon">⚠️</div>
-        <div class="modal-title" style="color:var(--warning);">Items Not Complete</div>
-        <div class="modal-message" id="skipMessage"></div>
-        <div class="skip-reasons" id="skipReasons">
-            <button class="skip-reason-btn" data-reason="Scale not working">Scale not working</button>
-            <button class="skip-reason-btn" data-reason="Remake">Remake / redo</button>
-            <button class="skip-reason-btn" data-reason="Other">Other</button>
-        </div>
-        <div class="modal-buttons"><button class="modal-btn secondary" id="skipCancelBtn">Go Back</button><button class="modal-btn primary" id="skipConfirmBtn" disabled>Complete Anyway</button></div>
-    </div></div>
+  if (oldestIdx < 0) {
+    return { success: false, reason: 'No orders in queue', queue_empty: true };
+  }
 
-    <!-- OVERRIDE TAKEOVER MODAL (managers only) -->
-    <div class="modal-overlay" id="overrideModal"><div class="modal-content">
-        <div class="modal-icon">🔓</div>
-        <div class="modal-title" style="color:var(--warning);">Take over an order</div>
-        <div class="modal-message">Manager override — pick a currently-active order to take over.</div>
-        <div class="override-list" id="overrideList"></div>
-        <div class="modal-buttons"><button class="modal-btn secondary" id="overrideCancelBtn">Cancel</button></div>
-    </div></div>
+  // Claim it
+  var now = new Date().toISOString();
+  sheet.getRange(oldestIdx + 1, 5).setValue(employeeName);
+  sheet.getRange(oldestIdx + 1, 6).setValue(now);
+  SpreadsheetApp.flush();
 
-    <div class="toast" id="toast"></div>
+  var claimedRow = data[oldestIdx];
+  var parsedPayload = JSON.parse(claimedRow[3] || '{}');
+  var items = Array.isArray(parsedPayload) ? parsedPayload : (parsedPayload.items || []);
 
-<script>
-const API_BASE='https://script.google.com/macros/s/AKfycbxnJ44_O7MLk0XAFlpgIc-biN3YHCrxiFgnNswxa27_Zu-2BdDfstwf9XtGsnPpH5tt/exec';
-const LOCATION='Garden of the Gods';
-const POLL_INTERVAL=5000;
-const TOLERANCE=0.5;
-const SCALE_VERIFY_TIMEOUT=3000;
-const SCALE_DATA_TIMEOUT=10000;
-const SCALE_WATCHDOG_INTERVAL=2000;
-// Employees allowed to take over orders claimed by someone else
-// John Krakauer, Brian Ortiz, Drake Wyman, Olivia Chavarria, Micah Molascon, Caymen Hook
-const OVERRIDE_EMPLOYEES=['EMP-1224','EMP-2309','EMP-7112','EMP-6982','EMP-4372','EMP-3667'];
+  return {
+    success: true,
+    order_id: claimedRow[0],
+    created_at: claimedRow[1] ? new Date(claimedRow[1]).toISOString() : null,
+    items: items,
+    car_name: claimedRow[7] || '',
+    notes: claimedRow[8] || '',
+    payment_type: claimedRow[9] || '',
+    order_type: claimedRow[11] || 'DRIVE-THRU'
+  };
+}
 
-// Priority items within an order — shakes, sundaes, splits must be made first.
-const PRIORITY_SKUS = [
-    'RGSUNDAE','LGSUN','BANSPL',
-    'SMSHAKE','RGSHAKE','KIDSSHAKE',
+/**
+ * Get queue status — how many orders are priority (claimed & working) vs
+ * waiting in the queue. Lightweight, safe to poll frequently.
+ * Returns: { priority_count, queue_count, oldest_queue_age_ms }
+ */
+function ws_getQueueStatus(location) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var pickedUpAtCol = headers.indexOf('picked_up_at');
+  var orderTypeCol = headers.indexOf('order_type');
+
+  var priorityCount = 0;   // claimed, not yet completed (being made)
+  var queueCount = 0;      // unclaimed, waiting for a scooper
+  var readyCount = 0;      // drive-thru only: completed but not picked up
+  var oldestQueueTime = null;
+  var now = Date.now();
+
+  // "Today" starts at 4 AM Mountain (safely during closed hours).
+  // Anything created before the most recent 4 AM is treated as yesterday.
+  var TODAY_RESET_HOUR = 4;
+  var nowDate = new Date();
+  var todayStart = new Date(nowDate);
+  todayStart.setHours(TODAY_RESET_HOUR, 0, 0, 0);
+  if (nowDate.getHours() < TODAY_RESET_HOUR) {
+    todayStart.setDate(todayStart.getDate() - 1);
+  }
+  var todayStartMs = todayStart.getTime();
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var orderLocation = row[2];
+    var claimedBy = row[4];
+    var claimedAt = row[5];
+    var completedAt = row[6];
+    var pickedUpAt = pickedUpAtCol >= 0 ? row[pickedUpAtCol] : null;
+    var orderType = orderTypeCol >= 0 ? (row[orderTypeCol] || 'DRIVE-THRU') : 'DRIVE-THRU';
+    var createdAt = row[1];
+
+    if (orderLocation !== location) continue;
+    if (pickedUpAt) continue;  // handed to customer
+
+    // Today-only scope — drop stale rows from previous days
+    if (!createdAt) continue;
+    var createdMs = new Date(createdAt).getTime();
+    if (isNaN(createdMs)) continue;
+    if (createdMs < todayStartMs) continue;
+
+    // Walk-ups: once completed, they're handed over immediately.
+    if (completedAt && orderType === 'WALK-UP') continue;
+
+    if (completedAt) {
+      readyCount++;
+    } else if (claimedBy && claimedAt) {
+      priorityCount++;
+    } else {
+      queueCount++;
+    }
+
+    if (oldestQueueTime === null || createdMs < oldestQueueTime) {
+      oldestQueueTime = createdMs;
+    }
+  }
+
+  return {
+    priority_count: priorityCount,
+    queue_count: queueCount,
+    ready_count: readyCount,
+    making_count: queueCount + priorityCount,
+    in_progress_count: queueCount + priorityCount + readyCount,
+    oldest_queue_age_ms: oldestQueueTime ? (now - oldestQueueTime) : 0
+  };
+}
+
+function ws_claimOrder(orderId, employeeId, employeeName) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+
+  // Verify the target order exists
+  var targetRowIdx = -1;
+  for (var j = 1; j < data.length; j++) {
+    if (data[j][0] === orderId) {
+      targetRowIdx = j;
+      break;
+    }
+  }
+  if (targetRowIdx < 0) {
+    return { success: false, error: 'Order not found' };
+  }
+
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] !== orderId) continue;
+
+    var currentClaimedBy = data[i][4];
+    var currentClaimedAt = data[i][5];
+    var completedAt = data[i][6];
+
+    // Already completed — can't reclaim a finished order
+    if (completedAt) {
+      return { success: false, error: 'Order already completed', already_completed: true };
+    }
+
+    var isAlreadyClaimed = currentClaimedBy && currentClaimedAt;
+    var isOverride = false;
+
+    if (isAlreadyClaimed && currentClaimedBy !== employeeName) {
+      var hasOverride = OVERRIDE_EMPLOYEES.indexOf(employeeId) !== -1;
+      if (!hasOverride) {
+        return {
+          success: false,
+          already_claimed: true,
+          claimed_by: currentClaimedBy,
+          error: 'Already claimed by ' + currentClaimedBy
+        };
+      }
+      isOverride = true;
+    }
+
+    var now = new Date().toISOString();
+    sheet.getRange(i + 1, 5).setValue(employeeName);
+    sheet.getRange(i + 1, 6).setValue(now);
+
+    // Log override in notes column (I = column 9)
+    if (isOverride) {
+      var existingNotes = data[i][8] || '';
+      var overrideNote = '[OVERRIDE ' + now + ' by ' + employeeName + ', taken from ' + currentClaimedBy + ']';
+      var newNotes = existingNotes ? (existingNotes + ' ' + overrideNote) : overrideNote;
+      sheet.getRange(i + 1, 9).setValue(newNotes);
+      Logger.log('Override claim: ' + orderId + ' taken by ' + employeeName + ' from ' + currentClaimedBy);
+    }
+
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      order_id: orderId,
+      created_at: data[i][1] ? new Date(data[i][1]).toISOString() : null,
+      items: JSON.parse(data[i][3] || '[]'),
+      order_type: data[i][11] || 'DRIVE-THRU',
+      override: isOverride
+    };
+  }
+  return { success: false, error: 'Order not found' };
+}
+/**
+ * Delete an order from the queue entirely — no data saved
+ * Used for skipped drivers and test orders
+ */
+function ws_deleteOrder(orderId) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === orderId) {
+      sheet.deleteRow(i + 1);
+      Logger.log('Deleted order: ' + orderId);
+      return { success: true };
+    }
+  }
+
+  return { success: false, error: 'Order not found' };
+}
+/**
+ * Complete order and save weights to BigQuery
+ */
+function ws_completeOrder(orderData) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+
+  try {
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0] === orderData.order_id) {
+        var now = new Date().toISOString();
+        sheet.getRange(i + 1, 7).setValue(now);
+        SpreadsheetApp.flush();
+
+        // Save weights to BigQuery outside the critical section
+        var projectId = 'vivid-monitor-448419-s4';
+        var rows = orderData.items.map(function(item) {
+          return {
+            json: {
+              id: Utilities.getUuid(),
+              order_id: orderData.order_id,
+              location: orderData.location,
+              employee_id: orderData.employee_id,
+              employee_name: orderData.employee_name,
+              weighed_by_id: item.weighed_by_id || orderData.employee_id,
+              weighed_by_name: item.weighed_by_name || orderData.employee_name,
+              item_name: item.item_name,
+              flavors: item.flavors || '',
+              target_oz: item.target_oz,
+              weight_oz: item.weight_oz || null,
+              skipped: item.skipped || false,
+              skip_reason: item.skip_reason || null,
+              weighed_at: now,
+              transaction_id: null,
+              matched_at: null
+            }
+          };
+        });
+
+        BigQuery.Tabledata.insertAll({ rows: rows }, projectId, 'operations', 'weigh_records');
+
+        // Archive this order to orders_archive immediately on completion.
+        // Previously archiving only happened during the daily cleanup sweep,
+        // which only touches orders >24h old — so analytics that read from
+        // orders_archive lagged 24+ hours behind reality.
+        try {
+          var headers = data[0];
+          var completedAtIdx = headers.indexOf('completed_at');
+          if (completedAtIdx !== -1) data[i][completedAtIdx] = now;
+          var archiveOk = ws_archiveOrdersToBigQuery([data[i]], headers);
+          if (!archiveOk) {
+            Logger.log('ws_completeOrder: live archive failed for ' + orderData.order_id +
+                       ' — will be retried by daily cleanup');
+          }
+        } catch (archiveErr) {
+          Logger.log('ws_completeOrder: live archive error for ' + orderData.order_id +
+                     ': ' + archiveErr.toString());
+        }
+
+        return { success: true, count: rows.length };
+      }
+    }
+    return { success: false, error: 'Order not found' };
+  } catch(e) {
+    Logger.log('ws_completeOrder error: ' + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Clean up old completed orders (run daily)
+ */
+function ws_deleteOrder(orderId) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] === orderId) {
+      sheet.deleteRow(i + 1);
+      Logger.log('Deleted order: ' + orderId);
+      return { success: true };
+    }
+  }
+
+  return { success: false, error: 'Order not found' };
+}
+/**
+ * Mark an order as picked up by the customer. Writes an ISO timestamp to the
+ * picked_up_at column so all devices (tablets, laptop) agree on pickup state.
+ * Idempotent — if already set, leaves the original timestamp alone.
+ */
+function ws_markPickedUp(orderId) {
+  try {
+    var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+    var sheet = ss.getSheetByName('OrderQueue');
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var orderIdCol = headers.indexOf('order_id');
+    var pickedUpAtCol = headers.indexOf('picked_up_at');
+
+    if (pickedUpAtCol === -1) {
+      return { success: false, error: 'picked_up_at column not found — please add it to row 1' };
+    }
+
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][orderIdCol] === orderId) {
+        var existing = data[i][pickedUpAtCol];
+        if (existing) {
+          return { success: true, picked_up_at: existing, already: true };
+        }
+        var now = new Date().toISOString();
+        sheet.getRange(i + 1, pickedUpAtCol + 1).setValue(now);
+        SpreadsheetApp.flush();
+        return { success: true, picked_up_at: now };
+      }
+    }
+    return { success: false, error: 'Order not found: ' + orderId };
+  } catch(e) {
+    return { success: false, error: String(e) };
+  }
+}
+/**
+ * Mark an order as paid at the window. Writes an ISO timestamp to the
+ * paid_at_window column.
+ */
+function ws_markPaidAtWindow(orderId) {
+  try {
+    var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+    var sheet = ss.getSheetByName('OrderQueue');
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var orderIdCol = headers.indexOf('order_id');
+    var paidAtWindowCol = headers.indexOf('paid_at_window');
+
+    if (paidAtWindowCol === -1) {
+      return { success: false, error: 'paid_at_window column not found — please add it to row 1' };
+    }
+
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][orderIdCol] === orderId) {
+        var existing = data[i][paidAtWindowCol];
+        if (existing) {
+          return { success: true, paid_at_window: existing, already: true };
+        }
+        var now = new Date().toISOString();
+        sheet.getRange(i + 1, paidAtWindowCol + 1).setValue(now);
+        SpreadsheetApp.flush();
+        return { success: true, paid_at_window: now };
+      }
+    }
+    return { success: false, error: 'Order not found: ' + orderId };
+  } catch(e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+/**
+ * Undo paid-at-window. Clears the paid_at_window column for one order.
+ */
+function ws_unmarkPaidAtWindow(orderId) {
+  try {
+    var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+    var sheet = ss.getSheetByName('OrderQueue');
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var orderIdCol = headers.indexOf('order_id');
+    var paidAtWindowCol = headers.indexOf('paid_at_window');
+
+    if (paidAtWindowCol === -1) {
+      return { success: false, error: 'paid_at_window column not found' };
+    }
+
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][orderIdCol] === orderId) {
+        sheet.getRange(i + 1, paidAtWindowCol + 1).setValue('');
+        SpreadsheetApp.flush();
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'Order not found: ' + orderId };
+  } catch(e) {
+    return { success: false, error: String(e) };
+  }
+}
+/**
+ * Undo a picked-up mark. Clears the picked_up_at column for one order.
+ * Used by the "Reopen" flow in CashierUI so reopening is sticky across devices.
+ */
+function ws_unmarkPickedUp(orderId) {
+  try {
+    var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+    var sheet = ss.getSheetByName('OrderQueue');
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var orderIdCol = headers.indexOf('order_id');
+    var pickedUpAtCol = headers.indexOf('picked_up_at');
+
+    if (pickedUpAtCol === -1) {
+      return { success: false, error: 'picked_up_at column not found' };
+    }
+
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][orderIdCol] === orderId) {
+        sheet.getRange(i + 1, pickedUpAtCol + 1).setValue('');
+        SpreadsheetApp.flush();
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'Order not found: ' + orderId };
+  } catch(e) {
+    return { success: false, error: String(e) };
+  }
+}
+function ws_cleanupOrderQueue() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var orderIdIdx = headers.indexOf('order_id');
+  var completedIdx = headers.indexOf('completed_at');
+
+  var oneDayAgo = new Date();
+  oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+  // Archive every completed order regardless of age. The previous version
+  // only archived orders >24h old, which meant the live archive in
+  // ws_completeOrder was the only path for fresh data — and any silent
+  // live-archive failure left a 24h gap in the analytics. Eagerly archiving
+  // every completed order on each cleanup run catches those failures within
+  // the cleanup interval (15 min) instead of a day later.
+  //
+  // Deduping is done by querying BigQuery for already-archived order_ids
+  // so re-runs don't double-insert.
+  var allCompleted = [];
+  var allCompletedIds = [];
+  var rowsToDelete = [];
+  for (var i = 1; i < data.length; i++) {
+    var oid = data[i][orderIdIdx];
+    var completedAt = data[i][completedIdx];
+    if (oid && completedAt) {
+      allCompleted.push(data[i]);
+      allCompletedIds.push(String(oid));
+      var completedDate = new Date(completedAt);
+      if (completedDate < oneDayAgo) {
+        rowsToDelete.push(i + 1);
+      }
+    }
+  }
+
+  // Figure out which order_ids are already in BigQuery so we don't double-insert
+  var rowsToArchive = [];
+  if (allCompleted.length > 0) {
+    var projectId = 'vivid-monitor-448419-s4';
+    var idList = allCompletedIds.map(function(id){
+      return '"' + String(id).replace(/"/g, '\\"') + '"';
+    }).join(',');
+    try {
+      var checkSql = 'SELECT DISTINCT order_id FROM `' + projectId +
+        '.operations.orders_archive` WHERE order_id IN (' + idList + ')';
+      var checkResult = BigQuery.Jobs.query({ query: checkSql, useLegacySql: false }, projectId);
+      var existing = {};
+      if (checkResult.rows) {
+        checkResult.rows.forEach(function(r) { existing[r.f[0].v] = true; });
+      }
+      rowsToArchive = allCompleted.filter(function(row) {
+        return !existing[String(row[orderIdIdx])];
+      });
+    } catch (e) {
+      Logger.log('ws_cleanupOrderQueue: dedup check failed (' + e + ') — skipping archive this run');
+      // Skip archiving this run rather than risk duplicates. Next run will retry.
+      return { archived: 0, deleted: 0, dedupFailed: true };
+    }
+  }
+
+  // Archive any unarchived completed orders
+  if (rowsToArchive.length > 0) {
+    var archiveOk = ws_archiveOrdersToBigQuery(rowsToArchive, headers);
+    if (!archiveOk) {
+      Logger.log('ws_cleanupOrderQueue: archive FAILED, skipping deletion to preserve data');
+      return { deleted: 0, archived: 0, archiveFailed: true };
+    }
+  }
+
+  // Delete only the >24h old rows. Recent rows stay in OrderQueue for a bit
+  // so the order-detail and reprint flows can find them.
+  for (var j = rowsToDelete.length - 1; j >= 0; j--) {
+    sheet.deleteRow(rowsToDelete[j]);
+  }
+
+  Logger.log('ws_cleanupOrderQueue: archived ' + rowsToArchive.length +
+             ' new, deleted ' + rowsToDelete.length + ' old (' +
+             allCompleted.length + ' total completed in queue)');
+  return { archived: rowsToArchive.length, deleted: rowsToDelete.length };
+}
+function checkGlobalAccess() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    SELECT employeeName_square, global_access 
+    FROM \`vivid-monitor-448419-s4.operations.square_employees_mapping\`
+    WHERE global_access = TRUE
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log(JSON.stringify(result.rows, null, 2));
+}function setGlobalAccessEmployees() {
+  var projectId = 'vivid-monitor-448419-s4';
+  var query = `
+    UPDATE \`vivid-monitor-448419-s4.operations.square_employees_mapping\`
+    SET global_access = TRUE
+    WHERE LOWER(employeeName_square) LIKE '%brian ortiz%'
+       OR LOWER(employeeName_square) LIKE '%drake wyman%'
+       OR LOWER(employeeName_square) LIKE '%michaela wren%'
+       OR LOWER(employeeName_square) LIKE '%olivia chavari%'
+       OR LOWER(employeeName_square) LIKE '%john krakauer%'
+  `;
+  var result = BigQuery.Jobs.query({ query: query, useLegacySql: false }, projectId);
+  Logger.log('Updated: ' + (result.numDmlAffectedRows || 'unknown') + ' rows');
+}
+function addTestOrder() {
+  var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+  var sheet = ss.getSheetByName('OrderQueue');
+  
+  var orderId = 'GG-' + Utilities.formatDate(new Date(), 'America/Denver', 'yyyyMMdd-HHmmss');
+  var now = new Date().toISOString();
+  
+  var items = [
+    { name: 'Regular Scoop', quantity: 2, flavors: ['Vanilla', 'Chocolate'] },
+    { name: 'Small Waffle', quantity: 1, flavors: ['Mint Chip'] }
+  ];
+  
+  sheet.appendRow([
+    orderId,
+    now,
+    'Garden of the Gods',
+    JSON.stringify(items),
+    '',
+    '',
+    ''
+  ]);
+  
+  Logger.log('Added test order: ' + orderId);
+}
+function addTestOrder2() {
+  var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+  var sheet = ss.getSheetByName('OrderQueue');
+  
+  var orderId = 'GG-' + Utilities.formatDate(new Date(), 'America/Denver', 'yyyyMMdd-HHmmss');
+  var now = new Date().toISOString();
+  
+  var items = [
+    { name: 'Large Scoop', quantity: 1, flavors: ['Butter Pecan'] },
+    { name: 'Regular Sundae', quantity: 1, flavors: ['Cookie Dough', 'Brownie'] }
+  ];
+  
+  sheet.appendRow([
+    orderId,
+    now,
+    'Garden of the Gods',
+    JSON.stringify(items),
+    '',
+    '',
+    ''
+  ]);
+  
+  Logger.log('Added test order: ' + orderId);
+}
+function resetOrderQueue() {
+  var ss = SpreadsheetApp.openById('1KbqDqPU7rvhbmhb1JCY71RN0XjeLk4xmJhbcZdxHPiM');
+  var sheet = ss.getSheetByName('OrderQueue');
+  
+  // Clear all rows except header
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.deleteRows(2, lastRow - 1);
+  }
+  
+  var now = new Date().toISOString();
+  
+  // Order 1
+  sheet.appendRow([
+    'GG-ORDER-001',
+    now,
+    'Garden of the Gods',
+    JSON.stringify([
+      { name: 'Regular Scoop', quantity: 2, flavors: ['Vanilla', 'Chocolate'] },
+      { name: 'Small Waffle', quantity: 1, flavors: ['Mint Chip'] }
+    ]),
+    '',
+    '',
+    ''
+  ]);
+  
+  // Order 2
+  sheet.appendRow([
+    'GG-ORDER-002',
+    now,
+    'Garden of the Gods',
+    JSON.stringify([
+      { name: 'Large Scoop', quantity: 1, flavors: ['Butter Pecan'] },
+      { name: 'Regular Sundae', quantity: 1, flavors: ['Cookie Dough'] }
+    ]),
+    '',
+    '',
+    ''
+  ]);
+  
+  Logger.log('Queue reset with 2 new orders');
+}
+function ws_clearAllOrders() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.deleteRows(2, lastRow - 1);
+  }
+  Logger.log('Cleared ' + (lastRow - 1) + ' orders from OrderQueue');
+}
+function debugLatestOrder() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) { Logger.log('No orders'); return; }
+  var lastRow = data[data.length - 1];
+  var parsed = JSON.parse(lastRow[3]);
+  Logger.log('all_items: ' + JSON.stringify(parsed.all_items));
+  Logger.log('items: ' + JSON.stringify(parsed.items));
+}
+function debugPendingOrders() {
+  var result = ws_getPendingOrders('Garden of the Gods');
+  Logger.log(JSON.stringify(result[0].items));
+}
+/**
+ * Clears stale orders from OrderQueue.
+ *
+ * Deletes two kinds of rows:
+ *   A) Pending orders (no completed_at) older than STALE_PENDING_HOURS —
+ *      catches HOLDs that never got served and claimed orders never marked done
+ *   B) ANY order older than MAX_AGE_HOURS — prevents sheet from growing forever
+ *
+ * Intended to run via daily time-based trigger at 1 AM Mountain.
+ * Install with ws_installStaleOrderTrigger().
+ */
+var STALE_PENDING_HOURS = 4;
+var MAX_AGE_HOURS = 24;
+
+function ws_clearStaleOrders() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    Logger.log('OrderQueue empty, nothing to clear.');
+    return { deleted: 0, cleared: [] };
+  }
+
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  var now = new Date().getTime();
+  var stalePendingMs = STALE_PENDING_HOURS * 60 * 60 * 1000;
+  var maxAgeMs = MAX_AGE_HOURS * 60 * 60 * 1000;
+
+  // Column indexes (matches existing code): 0=order_id, 1=created_at, 6=completed_at, 7=car_name
+  var rowsToDelete = [];
+  var cleared = [];
+
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var orderId = row[0];
+    var createdAt = row[1];
+    var completedAt = row[6];
+    if (!orderId) continue;
+
+    var createdMs = createdAt instanceof Date ? createdAt.getTime() : new Date(createdAt).getTime();
+    if (isNaN(createdMs)) continue;
+
+    var ageMs = now - createdMs;
+    var isPending = !completedAt;
+
+    var shouldDelete = (isPending && ageMs > stalePendingMs) || (ageMs > maxAgeMs);
+
+    if (shouldDelete) {
+      rowsToDelete.push(i + 2);
+      cleared.push({
+        order_id: orderId,
+        status: isPending ? 'PENDING' : 'COMPLETED',
+        age_hours: (ageMs / 3600000).toFixed(1),
+        car_name: row[7] || ''
+      });
+    }
+  }
+
+  // Delete bottom-up so indexes don't shift.
+  // BEFORE deleting, archive completed orders to BigQuery — preserves data.
+  // We only archive completed orders; pending stale orders (HOLDs etc.) get
+  // deleted without archive since they never finished.
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var completedAtCol = headers.indexOf('completed_at');
+  
+  var rowsToArchive = [];
+  for (var k = 0; k < rowsToDelete.length; k++) {
+    var rowIdx = rowsToDelete[k] - 2;  // back to data array index
+    if (rowIdx >= 0 && rowIdx < data.length) {
+      var rowData = data[rowIdx];
+      if (rowData[completedAtCol]) {
+        rowsToArchive.push(rowData);
+      }
+    }
+  }
+  
+  if (rowsToArchive.length > 0) {
+    Logger.log('ws_clearStaleOrders: archiving ' + rowsToArchive.length + ' completed orders to BigQuery before deletion');
+    var archiveOk = ws_archiveOrdersToBigQuery(rowsToArchive, headers);
+    if (!archiveOk) {
+      Logger.log('ws_clearStaleOrders: archive FAILED — aborting deletion to preserve data');
+      return { deleted: 0, cleared: [], archiveFailed: true };
+    }
+  }
+  
+  rowsToDelete.sort(function(a, b) { return b - a; });
+  for (var j = 0; j < rowsToDelete.length; j++) {
+    sheet.deleteRow(rowsToDelete[j]);
+  }
+
+  Logger.log('Cleared ' + cleared.length + ' stale orders:');
+  cleared.forEach(function(c) {
+    Logger.log('  ' + c.order_id + '  ' + c.status + '  age=' + c.age_hours + 'h  ' + c.car_name);
+  });
+  return { deleted: cleared.length, cleared: cleared };
+}
+
+/**
+ * Run ONCE from the Apps Script editor to install the daily 1 AM trigger.
+ * Safe to re-run; removes any existing trigger for this function first.
+ */
+function ws_installStaleOrderTrigger() {
+  var existing = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < existing.length; i++) {
+    if (existing[i].getHandlerFunction() === 'ws_clearStaleOrders') {
+      ScriptApp.deleteTrigger(existing[i]);
+      Logger.log('Removed existing ws_clearStaleOrders trigger');
+    }
+  }
+  ScriptApp.newTrigger('ws_clearStaleOrders')
+    .timeBased()
+    .everyDays(1)
+    .atHour(1)
+    .create();
+  Logger.log('Installed daily trigger: ws_clearStaleOrders at ~1 AM');
+}
+function _test_ws_claimNextOrder() {
+  var result = ws_claimNextOrder('Garden of the Gods', 'EMP-1224', 'John Krakauer');
+  Logger.log(JSON.stringify(result));
+}
+
+// ============ RESUME-AFTER-REFRESH FUNCTIONS ============
+
+/**
+ * Returns any in-progress (claimed, not completed) order for this employee
+ * at this location. Used when the scooper logs in / refreshes the tablet
+ * so they can resume where they left off instead of orphaning their claim.
+ *
+ * Returns { success: true, order: {...} } if found, or { success: false } if not.
+ * The order object mirrors the claim response shape and also includes any
+ * saved item_progress JSON so the UI can restore item state.
+ */
+function ws_getActiveOrderForEmployee(location, employeeName) {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var itemProgressCol = headers.indexOf('item_progress');
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (row[2] !== location) continue;              // location mismatch
+    if (row[6]) continue;                            // completed
+    if (!row[4] || !row[5]) continue;                // not claimed
+    if (row[4] !== employeeName) continue;           // claimed by someone else
+
+    // Match. Build response.
+    var parsedPayload;
+    try {
+      parsedPayload = JSON.parse(row[3] || '{}');
+    } catch (e) {
+      parsedPayload = {};
+    }
+    var items = Array.isArray(parsedPayload) ? parsedPayload : (parsedPayload.items || []);
+
+    var itemProgress = null;
+    if (itemProgressCol >= 0 && row[itemProgressCol]) {
+      try {
+        itemProgress = JSON.parse(row[itemProgressCol]);
+      } catch (e) {
+        itemProgress = null;
+      }
+    }
+
+    return {
+      success: true,
+      order: {
+        order_id: row[0],
+        created_at: row[1] ? new Date(row[1]).toISOString() : null,
+        claimed_at: row[5] ? new Date(row[5]).toISOString() : null,
+        items: items,
+        car_name: row[7] || '',
+        notes: row[8] || '',
+        payment_type: row[9] || '',
+        order_type: row[11] || 'DRIVE-THRU',
+        item_progress: itemProgress
+      }
+    };
+  }
+
+  return { success: false };
+}
+
+/**
+ * Save per-item progress for an order. Called by the weigh station UI
+ * (debounced) every time the scooper marks an item done, enters a weight,
+ * or skips an item. Stored as a JSON blob in the item_progress column so
+ * a refresh can restore state.
+ *
+ * itemProgress is an array of { idx, done, weight_oz, skipped, skip_reason }
+ * objects. We overwrite (last-write-wins) — no merging needed.
+ */
+function ws_saveItemProgress(orderId, itemProgress) {
+  try {
+    var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+    var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0];
+    var orderIdCol = headers.indexOf('order_id');
+    var itemProgressCol = headers.indexOf('item_progress');
+
+    if (itemProgressCol === -1) {
+      return { success: false, error: 'item_progress column not found — add it to row 1 of OrderQueue' };
+    }
+
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][orderIdCol] === orderId) {
+        var payload = JSON.stringify(itemProgress || []);
+        sheet.getRange(i + 1, itemProgressCol + 1).setValue(payload);
+        SpreadsheetApp.flush();
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'Order not found: ' + orderId };
+  } catch (e) {
+    Logger.log('ws_saveItemProgress error: ' + e.toString());
+    return { success: false, error: String(e) };
+  }
+}
+function countShakesToday() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  
+  // "Today" = since most recent 4 AM Mountain
+  var nowDate = new Date();
+  var todayStart = new Date(nowDate);
+  todayStart.setHours(4, 0, 0, 0);
+  if (nowDate.getHours() < 4) todayStart.setDate(todayStart.getDate() - 1);
+  var todayStartMs = todayStart.getTime();
+  
+  // Classic shakes
+  var classicSkus = ['SMSHAKE','RGSHAKE','KIDSSHAKE'];
+  // Specialty (blended) shakes — small and regular variants
+  var specialtySkus = [
+    'AVALNCH','AVALNCH-RG',
+    'POLARVX','POLARVX-RG',
     'BOMBCYC','BOMBCYC-RG',
     'SNOWDRFT','SNOWDRFT-RG',
-    'POLARVX','POLARVX-RG',
-    'FRSTBITE','FRSTBITE-RG',
-    'AVALNCH','AVALNCH-RG'
-];
-function isPriorityItem(item) {
-    return item && item.sku && PRIORITY_SKUS.indexOf(String(item.sku).toUpperCase()) !== -1;
+    'FRSTBITE','FRSTBITE-RG'
+  ];
+  var allBlendedSkus = classicSkus.concat(specialtySkus);
+  
+  var classicCount = 0;
+  var specialtyCount = 0;
+  var byName = {};
+  
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var createdAt = row[1];
+    var completedAt = row[6];
+    if (!completedAt) continue;
+    if (!createdAt || new Date(createdAt).getTime() < todayStartMs) continue;
+    
+    var parsed;
+    try { parsed = JSON.parse(row[3] || '{}'); } catch(e) { continue; }
+    var items = parsed.all_items || parsed.items || (Array.isArray(parsed) ? parsed : []);
+    
+    items.forEach(function(it) {
+      var sku = (it.sku || '').toUpperCase();
+      if (allBlendedSkus.indexOf(sku) === -1) return;
+      var qty = it.qty || 1;
+      if (classicSkus.indexOf(sku) !== -1) classicCount += qty;
+      else specialtyCount += qty;
+      var name = it.name || sku;
+      byName[name] = (byName[name] || 0) + qty;
+    });
+  }
+  
+  var total = classicCount + specialtyCount;
+  Logger.log('BLENDED DRINKS TODAY — total: ' + total);
+  Logger.log('  Classic shakes: ' + classicCount);
+  Logger.log('  Specialty shakes: ' + specialtyCount);
+  Logger.log('');
+  Logger.log('Breakdown:');
+  Object.keys(byName).sort(function(a,b){return byName[b]-byName[a];}).forEach(function(n) {
+    Logger.log('  ' + byName[n] + 'x ' + n);
+  });
 }
+/**
+ * Archive completed orders to BigQuery before they are deleted from the sheet.
+ * Called from ws_cleanupOrderQueue.
+ * Returns true if archive succeeded (or had nothing to archive), false on failure.
+ * If this returns false, the caller MUST NOT delete the rows.
+ */
+function ws_archiveOrdersToBigQuery(rowsData, headers) {
+  if (!rowsData || rowsData.length === 0) return true;
 
-let currentEmployee=null,currentWeight=0,scaleDevice=null,orders=[],activeOrder=null,workItems=[],pollTimer=null,pendingWeighItem=null,claiming=false;
-let scaleState='disconnected',lastDataReceived=0,scaleWatchdogTimer=null,scaleVerifyTimer=null,scaleReconnecting=false;
-let activeTab='claimNext';
-let makeTimerInterval=null;
-let orderClaimedAt=null;
-let orderCompletedAt=null;
-let queueStatus={priority_count:0,queue_count:0,oldest_queue_age_ms:0};
+  var projectId = 'vivid-monitor-448419-s4';
+  var datasetId = 'operations';
+  var tableId = 'orders_archive';
 
-const $=id=>document.getElementById(id);
-function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
-function showToast(msg,err=false){const t=$('toast');t.textContent=msg;t.className='toast'+(err?' error':'');t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
+  var orderIdCol     = headers.indexOf('order_id');
+  var locationCol    = headers.indexOf('location');
+  var createdAtCol   = headers.indexOf('created_at');
+  var claimedByCol   = headers.indexOf('claimed_by');
+  var claimedAtCol   = headers.indexOf('claimed_at');
+  var completedAtCol = headers.indexOf('completed_at');
+  var sentToWinCol   = headers.indexOf('sent_to_window');
+  var pickedUpCol    = headers.indexOf('picked_up_at');
+  var paidAtWinCol   = headers.indexOf('paid_at_window');
+  var carNameCol     = headers.indexOf('car_name');
+  var notesCol       = headers.indexOf('notes');
+  var paymentTypeCol = headers.indexOf('payment_type');
+  var paidAtCarCol   = headers.indexOf('paid_at_car');
+  var orderTypeCol   = headers.indexOf('order_type');
+  var tabletModeCol  = headers.indexOf('tablet_mode');
+  var starPrintedCol = headers.indexOf('star_printed');
+  var itemsJsonCol   = headers.indexOf('items_json');
+  var itemProgressCol = headers.indexOf('item_progress');
 
-async function apiGet(action,params={}){const url=new URL(API_BASE);url.searchParams.set('action',action);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));const r=await fetch(url.toString(),{redirect:'follow'});return r.json();}
-async function apiPost(action,body){const r=await fetch(API_BASE+'?action='+action,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body),redirect:'follow'});return r.json();}
+  var SHAKE_SKUS = ['SMSHAKE', 'RGSHAKE', 'KIDSSHAKE'];
+  var SUNDAE_SKUS = ['RGSUNDAE', 'LGSUN', 'BANSPL', 'BOMBCYC', 'BOMBCYC-RG',
+                     'SNOWDRFT', 'SNOWDRFT-RG', 'POLARVX', 'POLARVX-RG',
+                     'FRSTBITE', 'FRSTBITE-RG', 'AVALNCH', 'AVALNCH-RG'];
+  var PINT_SKUS = ['PINT', 'PINTPAIR'];
+  var COOKIE_SANDWICH_SKUS = ['SAMMIE'];
 
-// ===== MAKE TIMER =====
-function formatMakeTime(claimedAt, completedAt) {
-    if (!claimedAt) return '';
-    const end = completedAt ? new Date(completedAt).getTime() : Date.now();
-    const s = Math.floor((end - new Date(claimedAt).getTime()) / 1000);
-    if (s < 0) return '0:00';
-    return Math.floor(s / 60) + ':' + (s % 60).toString().padStart(2, '0');
-}
+  var nowIso = new Date().toISOString();
+  var bqRows = [];
 
-function getMakeTimeColor(claimedAt, completedAt) {
-    if (!claimedAt) return 'var(--success)';
-    if (completedAt) return 'var(--text-dim)';
-    const s = Math.floor((Date.now() - new Date(claimedAt).getTime()) / 1000);
-    if (s >= 300) return '#ef4444';
-    if (s >= 180) return '#f59e0b';
-    return 'var(--success)';
-}
+  for (var i = 0; i < rowsData.length; i++) {
+    var row = rowsData[i];
+    var orderId = row[orderIdCol];
+    if (!orderId) continue;
 
-function startMakeTimer(claimedAt) {
-    stopMakeTimer();
-    orderClaimedAt = claimedAt;
-    orderCompletedAt = null;
-    const timerEl = $('makeTimer');
-    const queueEl = $('queueTimer');
-    timerEl.style.display = 'inline-block';
-    const createdAt = activeOrder && activeOrder.created_at;
-    if (queueEl) {
-        queueEl.style.display = createdAt ? 'inline-block' : 'none';
+    var itemsJson = row[itemsJsonCol] || '';
+    var hasShake = false, hasSundae = false, hasPint = false, hasCookieSandwich = false;
+    var itemCount = 0;
+    try {
+      var parsed = JSON.parse(itemsJson || '{}');
+      var allItems = parsed.all_items || parsed.items || [];
+      itemCount = allItems.length;
+      for (var k = 0; k < allItems.length; k++) {
+        var sku = String(allItems[k].sku || '').toUpperCase();
+        if (SHAKE_SKUS.indexOf(sku) !== -1) hasShake = true;
+        if (SUNDAE_SKUS.indexOf(sku) !== -1) hasSundae = true;
+        if (PINT_SKUS.indexOf(sku) !== -1) hasPint = true;
+        if (COOKIE_SANDWICH_SKUS.indexOf(sku) !== -1) hasCookieSandwich = true;
+      }
+    } catch(e) {
+      // Continue with defaults
     }
-    function update() {
-        timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt);
-        timerEl.style.color = getMakeTimeColor(orderClaimedAt, orderCompletedAt);
-        if (queueEl && createdAt) {
-            queueEl.textContent = '👥 ' + formatMakeTime(createdAt, orderCompletedAt);
-            queueEl.style.color = getMakeTimeColor(createdAt, orderCompletedAt);
-        }
-    }
-    update();
-    makeTimerInterval = setInterval(update, 1000);
-}
 
-function stopMakeTimer(completedAt) {
-    if (makeTimerInterval) { clearInterval(makeTimerInterval); makeTimerInterval = null; }
+    var orderType = String(row[orderTypeCol] || '').toUpperCase();
+    var isWalkup = orderType === 'WALK-UP';
+    var isDrivethru = orderType === 'DRIVE-THRU';
+
+    // Compute timing metrics
+    var makeTimeSec = null;
+    var totalTimeSec = null;
+    var claimedAt = row[claimedAtCol];
+    var completedAt = row[completedAtCol];
+    var createdAt = row[createdAtCol];
+    var pickedUpAt = row[pickedUpCol];
+
+    if (claimedAt && completedAt) {
+      var ms = new Date(completedAt).getTime() - new Date(claimedAt).getTime();
+      if (!isNaN(ms) && ms > 0) makeTimeSec = ms / 1000;
+    }
+    if (createdAt && pickedUpAt) {
+      var ms2 = new Date(pickedUpAt).getTime() - new Date(createdAt).getTime();
+      if (!isNaN(ms2) && ms2 > 0) totalTimeSec = ms2 / 1000;
+    }
+
+    bqRows.push({
+      json: {
+        order_id: String(orderId),
+        location: row[locationCol] || null,
+        created_at: row[createdAtCol] ? new Date(row[createdAtCol]).toISOString() : null,
+        claimed_by: row[claimedByCol] || null,
+        claimed_at: row[claimedAtCol] ? new Date(row[claimedAtCol]).toISOString() : null,
+        completed_at: row[completedAtCol] ? new Date(row[completedAtCol]).toISOString() : null,
+        sent_to_window: row[sentToWinCol] ? new Date(row[sentToWinCol]).toISOString() : null,
+        picked_up_at: row[pickedUpCol] ? new Date(row[pickedUpCol]).toISOString() : null,
+        paid_at_window: row[paidAtWinCol] ? new Date(row[paidAtWinCol]).toISOString() : null,
+        car_name: row[carNameCol] || null,
+        notes: row[notesCol] || null,
+        payment_type: row[paymentTypeCol] || null,
+        paid_at_car: row[paidAtCarCol] || null,
+        order_type: row[orderTypeCol] || null,
+        tablet_mode: tabletModeCol >= 0 ? (row[tabletModeCol] || null) : null,
+        star_printed: starPrintedCol >= 0 ? (String(row[starPrintedCol] || '') || null) : null,
+        items_json: itemsJson || null,
+        item_progress: itemProgressCol >= 0 ? (row[itemProgressCol] || null) : null,
+        item_count: itemCount,
+        has_shake: hasShake,
+        has_sundae: hasSundae,
+        has_pint: hasPint,
+        has_cookie_sandwich: hasCookieSandwich,
+        is_walkup: isWalkup,
+        is_drivethru: isDrivethru,
+        make_time_seconds: makeTimeSec,
+        total_time_seconds: totalTimeSec,
+        archived_at: nowIso
+      }
+    });
+  }
+
+  if (bqRows.length === 0) return true;
+
+  try {
+    var result = BigQuery.Tabledata.insertAll({ rows: bqRows }, projectId, datasetId, tableId);
+    if (result && result.insertErrors && result.insertErrors.length > 0) {
+      Logger.log('BigQuery archive insertErrors: ' + JSON.stringify(result.insertErrors));
+      return false;
+    }
+    Logger.log('Archived ' + bqRows.length + ' orders to BigQuery');
+    return true;
+  } catch(e) {
+    Logger.log('BigQuery archive FAILED: ' + e.toString());
+    return false;
+  }
+}
+/**
+ * One-time backfill: archives ALL completed orders currently in the sheet
+ * to BigQuery, regardless of age. Does NOT delete from the sheet.
+ * Safe to run multiple times — but will create duplicates in BigQuery if
+ * you do, so check the count after running and don't run again unless
+ * you've cleared the table.
+ */
+function ws_backfillOrdersToBigQuery() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+
+  var completedAtIdx = headers.indexOf('completed_at');
+
+  var rowsToArchive = [];
+  for (var i = 1; i < data.length; i++) {
+    var completedAt = data[i][completedAtIdx];
     if (completedAt) {
-        orderCompletedAt = completedAt;
-        const timerEl = $('makeTimer');
-        const queueEl = $('queueTimer');
-        if (timerEl) {
-            timerEl.textContent = '⏱ ' + formatMakeTime(orderClaimedAt, orderCompletedAt);
-            timerEl.style.color = 'var(--text-dim)';
-        }
-        if (queueEl && activeOrder && activeOrder.created_at) {
-            queueEl.textContent = '👥 ' + formatMakeTime(activeOrder.created_at, orderCompletedAt);
-            queueEl.style.color = 'var(--text-dim)';
-        }
+      rowsToArchive.push(data[i]);
     }
-}
+  }
 
-// ===== QUEUE BANNER =====
-function formatAge(ms) {
-    if (!ms || ms < 60000) return 'just now';
-    const m = Math.floor(ms / 60000);
-    if (m < 60) return m + 'm';
-    return Math.floor(m/60) + 'h ' + (m%60) + 'm';
-}
+  Logger.log('Found ' + rowsToArchive.length + ' completed orders to backfill');
 
-function renderQueueBanners() {
-    // Three-part banner: "X to claim • Y making • Z ready"
-    // Only show each portion when non-zero. Fallback logic handles older backend.
-    const toClaim = queueStatus.queue_count || 0;
-    const making  = queueStatus.priority_count || 0;
-    const ready   = queueStatus.ready_count || 0;
-    const total   = toClaim + making + ready;
-    const age     = queueStatus.oldest_queue_age_ms || 0;
+  if (rowsToArchive.length === 0) {
+    Logger.log('Nothing to backfill.');
+    return { archived: 0 };
+  }
 
-    let cls = '', txt = '', show = true;
+  // BigQuery insertAll has a limit of 500 rows per call (and 10MB total payload).
+  // Batch in chunks of 200 to be safe.
+  var BATCH_SIZE = 200;
+  var totalArchived = 0;
+  var failedBatches = 0;
 
-    if (total === 0) {
-        show = false;
+  for (var start = 0; start < rowsToArchive.length; start += BATCH_SIZE) {
+    var batch = rowsToArchive.slice(start, start + BATCH_SIZE);
+    Logger.log('Archiving batch ' + (start / BATCH_SIZE + 1) + ' (' + batch.length + ' rows)...');
+    var ok = ws_archiveOrdersToBigQuery(batch, headers);
+    if (ok) {
+      totalArchived += batch.length;
     } else {
-        // Build only the non-zero parts
-        const parts = [];
-        if (toClaim > 0) parts.push(toClaim + ' to claim');
-        if (making  > 0) parts.push(making  + ' making');
-        if (ready   > 0) parts.push(ready   + ' ready');
-        const body = parts.join(' • ');
+      failedBatches++;
+      Logger.log('Batch ' + (start / BATCH_SIZE + 1) + ' FAILED');
+    }
+    // Brief pause between batches to avoid rate limits
+    Utilities.sleep(500);
+  }
 
-        // Tier driven by total
-        if (total <= 2) {
-            cls = 'calm';
-            txt = '📋 ' + body;
-        } else if (total <= 5) {
-            cls = 'warn';
-            txt = '⚠️ ' + body + ' — please hustle';
-        } else {
-            cls = 'alert';
-            txt = '🚨 ' + body.toUpperCase() + ' — BACKUP BUILDING';
-        }
+  Logger.log('Backfill complete. Archived ' + totalArchived + ' / ' + rowsToArchive.length + ' orders. Failed batches: ' + failedBatches);
+  return { archived: totalArchived, total: rowsToArchive.length, failedBatches: failedBatches };
+}
+// ============================================================================
+// 7SHIFTS TIME PUNCH ARCHIVE → BIGQUERY
+// ============================================================================
+// Pulls completed time punches from 7shifts and archives them to BigQuery for
+// staffing-aware analytics. Garden of the Gods only (location 502615).
+//
+// Functions:
+//   ws_pullTimePunches(startISO, endISO)   — fetch from 7shifts API
+//   ws_archiveTimePunchesToBigQuery(punches, userMap) — write to BigQuery
+//   ws_get7shiftsUserMap()                 — fetch user_id → "First Last" map
+//   ws_backfillTimePunches(days)           — one-time historical pull
+//   ws_dailyTimePunchSync()                — daily trigger entry point
+
+var WS_GG_LOCATION_ID = 502615;
+var WS_TP_PROJECT = 'vivid-monitor-448419-s4';
+var WS_TP_DATASET = 'operations';
+var WS_TP_TABLE = 'time_punches';
+
+
+/**
+ * Fetch completed time punches from 7shifts for a date range.
+ * Filters server-side to Garden of the Gods (location 502615).
+ *
+ * @param {string} startISO - ISO timestamp for clocked_in[gte] (e.g. "2026-04-01T00:00:00Z")
+ * @param {string} endISO   - ISO timestamp for clocked_in[lte]
+ * @return {Array<Object>}  Raw 7shifts punch objects with clocked_out set
+ */
+function ws_pullTimePunches(startISO, endISO) {
+  var token = FA_CONFIG.SEVENSHIFT_TOKEN;
+  var companyId = FA_CONFIG.SEVENSHIFT_COMPANY_ID || '224651';
+
+  var baseUrl = 'https://api.7shifts.com/v2/company/' + companyId + '/time_punches' +
+    '?location_id=' + WS_GG_LOCATION_ID +
+    '&clocked_in[gte]=' + encodeURIComponent(startISO) +
+    '&clocked_in[lte]=' + encodeURIComponent(endISO) +
+    '&limit=100';
+
+  var options = {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    },
+    muteHttpExceptions: true
+  };
+
+  var allPunches = [];
+  var cursor = null;
+  var pageCount = 0;
+
+  do {
+    var url = cursor ? baseUrl + '&cursor=' + encodeURIComponent(cursor) : baseUrl;
+    var response = UrlFetchApp.fetch(url, options);
+    var code = response.getResponseCode();
+
+    if (code !== 200) {
+      Logger.log('[7shifts] Time punch fetch HTTP ' + code + ': ' + response.getContentText().substring(0, 300));
+      throw new Error('7shifts time_punches API error: ' + code);
     }
 
-    const ageLine = (show && age > 60000) ? '<div class="queue-banner-age">Oldest: ' + formatAge(age) + '</div>' : '';
-    ['queueBannerClaim','queueBannerWork'].forEach(id => {
-        const el = $(id);
-        if (!el) return;
-        el.className = 'queue-banner' + (show ? (' show ' + cls) : '');
-        el.innerHTML = show ? (txt + ageLine) : '';
+    var json = JSON.parse(response.getContentText());
+    if (json.data) {
+      // Only keep completed punches (clocked_out is set)
+      for (var i = 0; i < json.data.length; i++) {
+        if (json.data[i].clocked_out) allPunches.push(json.data[i]);
+      }
+    }
+    cursor = (json.meta && json.meta.cursor && json.meta.cursor.next) ? json.meta.cursor.next : null;
+    pageCount++;
+    if (pageCount > 50) {
+      Logger.log('[7shifts] Stopped pagination at 50 pages (safety guard)');
+      break;
+    }
+    Utilities.sleep(100);  // rate limit politeness
+  } while (cursor);
+
+  Logger.log('[7shifts] Pulled ' + allPunches.length + ' completed punches (' + pageCount + ' pages) for ' + WS_GG_LOCATION_ID);
+  return allPunches;
+}
+
+
+/**
+ * Build a user_id → "First Last" map from 7shifts /users endpoint.
+ * Cached in script properties for 6 hours to avoid hammering the API.
+ *
+ * @param {boolean} forceRefresh - bypass cache
+ * @return {Object} { 12345: "Kristina Whittaker", ... }
+ */
+function ws_get7shiftsUserMap(forceRefresh) {
+  var CACHE_KEY = 'ws_7shifts_user_map';
+  var CACHE_TTL_MS = 6 * 60 * 60 * 1000;  // 6 hours
+
+  if (!forceRefresh) {
+    var cached = PropertiesService.getScriptProperties().getProperty(CACHE_KEY);
+    if (cached) {
+      try {
+        var parsed = JSON.parse(cached);
+        if (parsed.timestamp && (Date.now() - parsed.timestamp) < CACHE_TTL_MS) {
+          return parsed.map;
+        }
+      } catch(e) {}
+    }
+  }
+
+  var token = FA_CONFIG.SEVENSHIFT_TOKEN;
+  var companyId = FA_CONFIG.SEVENSHIFT_COMPANY_ID || '224651';
+
+  var options = {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    },
+    muteHttpExceptions: true
+  };
+
+  var userMap = {};
+  var cursor = null;
+  var pages = 0;
+
+  do {
+    var url = 'https://api.7shifts.com/v2/company/' + companyId + '/users?limit=100';
+    if (cursor) url += '&cursor=' + encodeURIComponent(cursor);
+
+    var response = UrlFetchApp.fetch(url, options);
+    if (response.getResponseCode() !== 200) {
+      Logger.log('[7shifts] /users fetch failed: ' + response.getContentText().substring(0, 300));
+      break;
+    }
+
+    var json = JSON.parse(response.getContentText());
+    if (json.data) {
+      json.data.forEach(function(u) {
+        var first = u.first_name || '';
+        var last = u.last_name || '';
+        userMap[u.id] = (first + ' ' + last).trim();
+      });
+    }
+    cursor = (json.meta && json.meta.cursor && json.meta.cursor.next) ? json.meta.cursor.next : null;
+    pages++;
+    if (pages > 20) break;
+    Utilities.sleep(100);
+  } while (cursor);
+
+  Logger.log('[7shifts] Loaded ' + Object.keys(userMap).length + ' users');
+
+  PropertiesService.getScriptProperties().setProperty(CACHE_KEY, JSON.stringify({
+    timestamp: Date.now(),
+    map: userMap
+  }));
+
+  return userMap;
+}
+
+
+/**
+ * Transform raw 7shifts punches and write to BigQuery.
+ *
+ * @param {Array<Object>} punches - Raw 7shifts punch objects
+ * @param {Object} userMap - user_id → name map (optional; will fetch if omitted)
+ * @return {boolean} success
+ */
+function ws_archiveTimePunchesToBigQuery(punches, userMap) {
+  if (!punches || punches.length === 0) return true;
+  if (!userMap) userMap = ws_get7shiftsUserMap();
+
+  var nowIso = new Date().toISOString();
+  var bqRows = [];
+  var datesAffected = {};  // Set of shift_date strings for the DELETE clause
+
+  for (var i = 0; i < punches.length; i++) {
+    var p = punches[i];
+    if (!p.id || !p.clocked_in || !p.clocked_out) continue;
+
+    var inMs = new Date(p.clocked_in).getTime();
+    var outMs = new Date(p.clocked_out).getTime();
+    var hours = null;
+    if (!isNaN(inMs) && !isNaN(outMs) && outMs > inMs) {
+      hours = (outMs - inMs) / (1000 * 60 * 60);
+    }
+
+    // Mountain-Time date for shift_date (so hour 23 UTC = 5 PM MT stays on the right day)
+    var shiftDate = Utilities.formatDate(new Date(p.clocked_in), 'America/Denver', 'yyyy-MM-dd');
+    datesAffected[shiftDate] = true;
+
+    bqRows.push({
+      // Run-unique insertId — dedup is now via DELETE, not BQ streaming buffer
+      // (which is unreliable; cf. scheduled_shifts experience).
+      insertId: 'punch_' + p.id + '_' + nowIso,
+      json: {
+        punch_id: p.id,
+        user_id: p.user_id,
+        user_name: userMap[p.user_id] || null,
+        location_id: p.location_id,
+        role_id: p.role_id || null,
+        department_id: p.department_id || null,
+        clocked_in: p.clocked_in,
+        clocked_out: p.clocked_out,
+        hours: hours,
+        hourly_wage_cents: p.hourly_wage || null,
+        shift_id: p.shift_id || null,
+        shift_date: shiftDate,
+        archived_at: nowIso
+      }
     });
-}
+  }
 
-// ===== SCALE STATE MACHINE =====
-function setScaleState(newState){
-    scaleState=newState;
-    const ind=$('scaleIndicator'),connectBtn=$('connectScaleBtn'),reconnectBtn=$('reconnectScaleBtn'),loginBtn=$('loginScaleBtn');
-    switch(newState){
-        case 'disconnected':
-            ind.textContent='No Scale';ind.className='scale-indicator';
-            connectBtn.style.display='block';connectBtn.textContent='Connect Scale';
-            reconnectBtn.style.display='none';loginBtn.textContent='Connect Scale';loginBtn.disabled=false;break;
-        case 'connecting':
-            ind.textContent='⏳ Connecting...';ind.className='scale-indicator';
-            connectBtn.style.display='none';reconnectBtn.style.display='none';
-            loginBtn.textContent='Connecting...';loginBtn.disabled=true;break;
-        case 'verifying':
-            ind.textContent='⏳ Verifying...';ind.className='scale-indicator stale';
-            connectBtn.style.display='none';reconnectBtn.style.display='none';break;
-        case 'live':
-            ind.textContent='⚖️ Scale OK';ind.className='scale-indicator connected';
-            connectBtn.style.display='none';reconnectBtn.style.display='none';
-            loginBtn.textContent='✓ Scale Connected';loginBtn.disabled=true;break;
-        case 'stale':
-            ind.textContent='⚠ Scale Lost — Tap Here';ind.className='scale-indicator dead';
-            connectBtn.style.display='none';reconnectBtn.style.display='block';
-            loginBtn.textContent='⚠ Reconnect Scale';loginBtn.disabled=false;break;
+  if (bqRows.length === 0) return true;
+
+  // ---- DELETE existing rows for affected dates ----
+  // Idempotent: every run wipes the slice of data being re-archived, then re-inserts.
+  // Streaming-buffer-block within ~90 min of a recent insert will fail the DELETE;
+  // production cadence (1:30 AM nightly + 6 AM retry) is well past that window.
+  var dateList = Object.keys(datesAffected)
+    .map(function(d) { return "DATE('" + d + "')"; })
+    .join(', ');
+
+  var deleteSql =
+    'DELETE FROM `' + WS_TP_PROJECT + '.' + WS_TP_DATASET + '.' + WS_TP_TABLE + '` ' +
+    'WHERE shift_date IN (' + dateList + ') ' +
+    '  AND location_id = ' + WS_GG_LOCATION_ID;
+
+  try {
+    var deleteJob = BigQuery.Jobs.query(
+      { query: deleteSql, useLegacySql: false },
+      WS_TP_PROJECT
+    );
+    var rowsDeleted = (deleteJob && deleteJob.numDmlAffectedRows) ? deleteJob.numDmlAffectedRows : '0';
+    Logger.log('[BigQuery] Deleted ' + rowsDeleted + ' existing time_punches rows for ' + Object.keys(datesAffected).length + ' date(s)');
+  } catch(e) {
+    Logger.log('[BigQuery] time_punches DELETE FAILED: ' + e.toString());
+    return false;
+  }
+
+  // ---- INSERT the fresh batch ----
+  try {
+    var result = BigQuery.Tabledata.insertAll({ rows: bqRows }, WS_TP_PROJECT, WS_TP_DATASET, WS_TP_TABLE);
+    if (result && result.insertErrors && result.insertErrors.length > 0) {
+      Logger.log('[BigQuery] time_punches insertErrors: ' + JSON.stringify(result.insertErrors).substring(0, 500));
+      return false;
     }
+    Logger.log('[BigQuery] Archived ' + bqRows.length + ' time punches (replacing prior rows for affected dates)');
+    return true;
+  } catch(e) {
+    Logger.log('[BigQuery] time_punches archive FAILED: ' + e.toString());
+    return false;
+  }
 }
 
-$('scaleIndicator').addEventListener('click',()=>{if(scaleState==='stale'||scaleState==='disconnected')forceReconnectScale();});
 
-function startScaleWatchdog(){
-    stopScaleWatchdog();
-    scaleWatchdogTimer=setInterval(()=>{
-        if(scaleState==='live'){const e=Date.now()-lastDataReceived;if(e>SCALE_DATA_TIMEOUT){setScaleState('stale');showToast('Scale lost — tap Reconnect',true);}}
-    },SCALE_WATCHDOG_INTERVAL);
-}
-function stopScaleWatchdog(){
-    if(scaleWatchdogTimer){clearInterval(scaleWatchdogTimer);scaleWatchdogTimer=null;}
-    if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}
-}
+/**
+ * One-time backfill of N days of historical time punches.
+ * Run from the Apps Script editor.
+ *
+ * @param {number} days - How many days back to pull (default 30)
+ */
+function ws_backfillTimePunches(days) {
+  days = days || 30;
 
-$('loginScaleBtn').addEventListener('click',()=>{if(scaleState==='stale')forceReconnectScale();else connectScale();});
-$('connectScaleBtn').addEventListener('click',connectScale);
-$('reconnectScaleBtn').addEventListener('click',forceReconnectScale);
+  var endDate = new Date();
+  var startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
 
-async function connectScale(){
-    try{setScaleState('connecting');const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
-    if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');return;}await openScale(devs[0]);}
-    catch(e){showToast('Scale error: '+e.message,true);setScaleState('disconnected');}
-}
-async function forceReconnectScale(){
-    if(scaleReconnecting)return;scaleReconnecting=true;
-    if(scaleDevice){try{scaleDevice.removeEventListener('inputreport',handleScaleInput);scaleDevice.removeEventListener('close',onScaleDisconnect);if(scaleDevice.opened)await scaleDevice.close();}catch(e){}scaleDevice=null;}
-    setScaleState('connecting');currentWeight=0;$('currentWeight').textContent='0.0';
-    await new Promise(r=>setTimeout(r,500));
-    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s){await openScale(s);scaleReconnecting=false;return;}}catch(e){}
-    try{const devs=await navigator.hid.requestDevice({filters:[{vendorId:0x0922},{vendorId:0x1446}]});
-    if(!devs.length){showToast('No scale selected',true);setScaleState('disconnected');scaleReconnecting=false;return;}await openScale(devs[0]);}
-    catch(e){showToast('Reconnect failed: '+e.message,true);setScaleState('disconnected');}
-    scaleReconnecting=false;
-}
-async function openScale(device){
-    try{
-        scaleDevice=device;
-        if(scaleDevice.opened){try{await scaleDevice.close();}catch(e){}await new Promise(r=>setTimeout(r,500));}
-        await scaleDevice.open();
-        try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e){}
-        try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e){}
-        scaleDevice.addEventListener('inputreport',handleScaleInput);
-        scaleDevice.addEventListener('close',onScaleDisconnect);
-        setScaleState('verifying');
-        if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);
-        scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);
-        startScaleWatchdog();
-    }catch(e){
-        showToast('Scale open failed: '+e.message,true);
-        await new Promise(r=>setTimeout(r,2000));
-        try{if(!scaleDevice.opened)await scaleDevice.open();
-        try{scaleDevice.removeEventListener('inputreport',handleScaleInput);}catch(e2){}
-        try{scaleDevice.removeEventListener('close',onScaleDisconnect);}catch(e2){}
-        scaleDevice.addEventListener('inputreport',handleScaleInput);scaleDevice.addEventListener('close',onScaleDisconnect);
-        setScaleState('verifying');
-        if(scaleVerifyTimer)clearTimeout(scaleVerifyTimer);
-        scaleVerifyTimer=setTimeout(()=>{if(scaleState==='verifying'){setScaleState('stale');showToast('Scale not responding — tap Reconnect',true);}},SCALE_VERIFY_TIMEOUT);
-        startScaleWatchdog();}catch(e2){showToast('Scale failed: '+e2.message,true);setScaleState('disconnected');}
-    }
-}
-function onScaleDisconnect(){
-    setScaleState('stale');showToast('Scale disconnected — tap Reconnect',true);
-    setTimeout(async()=>{if(scaleState!=='stale')return;try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}},3000);
-}
-function handleScaleInput(event){
-    const b=new Uint8Array(event.data.buffer);lastDataReceived=Date.now();
-    if(scaleState==='verifying'){if(scaleVerifyTimer){clearTimeout(scaleVerifyTimer);scaleVerifyTimer=null;}setScaleState('live');showToast('Scale connected!');}
-    if(scaleState==='stale'){setScaleState('live');showToast('Scale reconnected!');}
-    if(b.length>=5){const uc=b[1],exp=b[2]>127?b[2]-256:b[2],wr=b[3]+(b[4]<<8);let w=wr*Math.pow(10,exp);if(uc===2)w*=0.035274;currentWeight=w;$('currentWeight').textContent=w.toFixed(1);}
-}
-async function autoConnectScale(){
-    if(!navigator.hid)return;
-    try{const devs=await navigator.hid.getDevices();const s=devs.find(d=>d.vendorId===0x0922||d.vendorId===0x1446);if(s)await openScale(s);}catch(e){}
-}
-if(navigator.hid){
-    navigator.hid.addEventListener('connect',async(e)=>{if(e.device.vendorId===0x0922||e.device.vendorId===0x1446){await new Promise(r=>setTimeout(r,1000));await openScale(e.device);}});
-    navigator.hid.addEventListener('disconnect',(e)=>{if(scaleDevice&&e.device===scaleDevice)onScaleDisconnect();});
-}
+  var startISO = Utilities.formatDate(startDate, 'UTC', "yyyy-MM-dd'T'HH:mm:ss'Z'");
+  var endISO = Utilities.formatDate(endDate, 'UTC', "yyyy-MM-dd'T'HH:mm:ss'Z'");
 
-// ===== PIN LOGIN =====
-let pinEntry='',pinMode='login',pendingPin='';
-$('pinPad').addEventListener('click',e=>{
-    const key=e.target.dataset.key;if(!key)return;
-    if(key==='back'){pinEntry=pinEntry.slice(0,-1);updatePinDots();return;}
-    if(key==='clear'){pinEntry='';updatePinDots();$('pinStatus').textContent='';return;}
-    if(pinEntry.length>=4)return;pinEntry+=key;updatePinDots();if(pinEntry.length===4)handlePinComplete();
-});
-function updatePinDots(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot'+(i<pinEntry.length?' filled':'');}
-function showPinError(){for(let i=0;i<4;i++)$('dot'+i).className='pin-dot error';setTimeout(()=>{pinEntry='';updatePinDots();},600);}
-async function handlePinComplete(){
-    $('pinStatus').textContent='Checking...';
-    try{
-        const result=await apiGet('pinlookup',{pin:pinEntry});
-        if(result.found){loginEmployee(result);}
-        else{$('pinStatus').textContent='Incorrect PIN — try again. New users must register on the order tablet first.';showPinError();}
-    }
-    catch(e){$('pinStatus').textContent='Connection error';showPinError();}
-}
-$('nameInput').addEventListener('input',()=>{$('nameSubmitBtn').disabled=$('nameInput').value.trim().length<2;});
-$('nameInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('nameSubmitBtn').disabled)registerEmployee();});
-$('nameSubmitBtn').addEventListener('click',registerEmployee);
-async function registerEmployee(){
-    const name=$('nameInput').value.trim();if(name.length<2)return;
-    $('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='Registering...';
-    try{const result=await apiPost('pinregister',{pin:pendingPin,name:name});
-    if(result.success){loginEmployee({name:result.name,employee_id:result.employee_id});}
-    else{showToast(result.error||'Registration failed',true);resetLogin();}}
-    catch(e){showToast('Connection error',true);resetLogin();}
-}
-function loginEmployee(emp){
-    currentEmployee={id:emp.employee_id,name:emp.name};
-    $('loginScreen').style.display='none';$('nameInputScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
-    $('employeeBadge').textContent=currentEmployee.name;$('employeeBadge').style.display='inline-block';$('logoutBtn').style.display='inline-block';
-    $('pinStatus').textContent='';showToast('Welcome, '+currentEmployee.name+'!');
-    // Managers see the override link
-    if (OVERRIDE_EMPLOYEES.indexOf(currentEmployee.id) !== -1) {
-        $('overrideLink').style.display = 'block';
-    }
-    startPolling();
-    // Check if this employee has an in-progress order and auto-resume
-    tryResumeActiveOrder();
-}
+  Logger.log('Backfilling time punches: ' + startISO + ' → ' + endISO);
 
-// If the employee has an unfinished claimed order at this location, restore
-// it and jump straight to the work screen. Called right after login.
-async function tryResumeActiveOrder(){
-    try {
-        const r = await apiGet('getactiveorderforemployee', {
-            location: LOCATION,
-            employee_name: currentEmployee.name
-        });
-        if (!r || !r.success || !r.order) return;
-        const o = r.order;
-        activeOrder = {
-            order_id: o.order_id,
-            items: o.items || [],
-            car_name: o.car_name || '',
-            notes: o.notes || '',
-            payment_type: o.payment_type || '',
-            order_type: o.order_type || 'DRIVE-THRU',
-            claimed_by: currentEmployee.name,
-            claimed_at: o.claimed_at || new Date().toISOString(),
-            created_at: o.created_at || null
-        };
-        // Build workItems and overlay any saved per-item progress by index
-        const saved = Array.isArray(o.item_progress) ? o.item_progress : [];
-        const savedByIdx = {};
-        saved.forEach(p => { if (typeof p.idx === 'number') savedByIdx[p.idx] = p; });
-        workItems = activeOrder.items.map((item, idx) => {
-            const base = {...item, idx, done:false, weightOz:null, skipped:false, skipReason:null};
-            const s = savedByIdx[idx];
-            if (s) {
-                base.done = !!s.done;
-                base.weightOz = (typeof s.weight_oz === 'number') ? s.weight_oz : null;
-                base.skipped = !!s.skipped;
-                base.skipReason = s.skip_reason || null;
-            }
-            return base;
-        });
-        showWorkScreen();
-        startMakeTimer(activeOrder.claimed_at);
-        showToast('Resumed '+activeOrder.order_id);
-    } catch(e) {
-        // Silent — not being able to resume is not fatal
-    }
-}
+  var punches = ws_pullTimePunches(startISO, endISO);
+  if (punches.length === 0) {
+    Logger.log('No punches found in date range');
+    return { archived: 0, total: 0 };
+  }
 
-// Debounced save of per-item progress to server. Called whenever workItems
-// changes. 500ms debounce so rapid taps don't create a flood of API calls.
-let _saveProgressTimer=null;
-function saveProgressDebounced(){
-    if (!activeOrder || !activeOrder.order_id) return;
-    if (_saveProgressTimer) clearTimeout(_saveProgressTimer);
-    _saveProgressTimer = setTimeout(()=>{
-        _saveProgressTimer = null;
-        const snapshot = workItems.map(i => ({
-            idx: i.idx,
-            done: !!i.done,
-            weight_oz: (typeof i.weightOz === 'number') ? i.weightOz : null,
-            skipped: !!i.skipped,
-            skip_reason: i.skipReason || null
-        }));
-        apiPost('saveitemprogress', {
-            order_id: activeOrder.order_id,
-            item_progress: snapshot
-        }).catch(()=>{/* silent */});
-    }, 500);
-}
-function resetLogin(){
-    pinEntry='';pinMode='login';pendingPin='';
-    $('loginTitle').textContent='Enter Your PIN';$('loginSubtitle').textContent='Use your Square PIN';$('pinStatus').textContent='';
-    $('nameInputScreen').classList.remove('active');$('loginScreen').style.display='flex';
-    $('nameInput').value='';$('nameSubmitBtn').disabled=true;$('nameSubmitBtn').textContent='REGISTER & START';updatePinDots();
-}
-$('logoutBtn').addEventListener('click',()=>{
-    stopPolling();stopMakeTimer();currentEmployee=null;activeOrder=null;workItems=[];
-    $('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.remove('active');
-    $('employeeBadge').style.display='none';$('logoutBtn').style.display='none';
-    $('overrideLink').style.display='none';
-    resetLogin();
-});
+  var userMap = ws_get7shiftsUserMap(true);  // force refresh on backfill
 
-// ===== TABS =====
-function switchTab(tab){
-    activeTab=tab;
-    $('tabClaimNext').className='tab-btn'+(tab==='claimNext'?' active':'');
-    $('tabCompleted').className='tab-btn'+(tab==='completed'?' active':'');
-    $('claimNextContent').style.display = (tab==='claimNext' ? 'flex' : 'none');
-    $('completedContent').style.display = (tab==='completed' ? 'flex' : 'none');
-    if (tab === 'completed') fetchCompletedOrders();
-}
+  // Batch in chunks of 200 (BigQuery insertAll limit considerations)
+  var BATCH_SIZE = 200;
+  var totalArchived = 0;
+  var failedBatches = 0;
 
-// ===== POLLING =====
-function startPolling(){fetchQueueStatus();pollTimer=setInterval(fetchQueueStatus,POLL_INTERVAL);}
-function stopPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
-async function fetchQueueStatus(){
-    try{
-        queueStatus = await apiGet('getqueuestatus',{location:LOCATION});
-        renderQueueBanners();
-        // Empty-state visibility on the claim-next screen
-        const hasQueue = (queueStatus.queue_count || 0) > 0;
-        $('claimNextEmpty').style.display = hasQueue ? 'none' : 'block';
-        $('claimNextBtn').style.display = hasQueue ? 'block' : 'none';
-        if (activeTab === 'completed') fetchCompletedOrders();
-        $('pollStatus').textContent='Last checked: '+new Date().toLocaleTimeString();
-    }catch(e){
-        $('pollStatus').textContent='Connection error - retrying...';
-    }
-}
-
-async function fetchCompletedOrders(){
-    try{
-        const all = await apiGet('getpendingorders',{location:LOCATION});
-        orders = all;
-        renderCompletedList();
-    }catch(e){}
-}
-
-function renderCompletedList(){
-    const list = $('completedList');
-    const completed = (orders||[]).filter(o => o.completed_at);
-    if (!completed.length) {
-        list.innerHTML = '<div class="no-orders"><div class="icon">📋</div><div class="msg">No completed orders</div></div>';
-        return;
-    }
-    // Newest first
-    completed.sort((a,b) => new Date(b.completed_at) - new Date(a.completed_at));
-
-    // Color-coded thresholds (seconds)
-    const makeColor = s => {
-        if (s < 120) return '#4ade80';   // green
-        if (s < 210) return '#facc15';   // yellow
-        if (s < 300) return '#fb923c';   // orange
-        return '#ef4444';                 // red
-    };
-    const totalColor = s => {
-        if (s < 180) return '#4ade80';
-        if (s < 300) return '#facc15';
-        if (s < 480) return '#fb923c';
-        return '#ef4444';
-    };
-    const fmtMMSS = s => {
-        if (s === null || s === undefined || isNaN(s) || s < 0) return '—';
-        const m = Math.floor(s / 60);
-        const sec = Math.floor(s % 60);
-        return m + ':' + sec.toString().padStart(2,'0');
-    };
-    const secsBetween = (startIso, endIso) => {
-        if (!startIso || !endIso) return null;
-        return Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000);
-    };
-
-    let h = '';
-    completed.forEach(o => {
-        const makeSecs = secsBetween(o.claimed_at, o.completed_at);
-        // Customer wait: drive-thru uses picked_up_at; walk-ups use completed_at
-        const endIso = (o.order_type === 'DRIVE-THRU') ? (o.picked_up_at || o.completed_at) : o.completed_at;
-        const totalSecs = secsBetween(o.created_at, endIso);
-
-        const typeBadge = o.order_type === 'WALK-UP'
-            ? '<span style="display:inline-block;background:#0ea5e9;color:white;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚶 WALK-UP</span>'
-            : '<span style="display:inline-block;background:#f59e0b;color:#1a1a2e;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:800;margin-left:6px;">🚗 DRIVE-THRU</span>';
-
-        h += '<div class="order-card completed" style="display:block;">';
-        // Header: car name + age
-        h += '<div class="order-card-top">';
-        h += '<span class="order-card-car">'+esc(o.car_name||'No Car')+typeBadge+'</span>';
-        h += '<span class="order-card-time">'+orderAge(o.completed_at)+'</span>';
-        h += '</div>';
-        // Meta: ID, payment, who made it
-        h += '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">';
-        h += o.order_id + (o.payment_type?' • '+o.payment_type:'');
-        if (o.claimed_by) h += ' • made by ' + esc(o.claimed_by);
-        h += '</div>';
-        // Timing — two lines, color coded
-        if (makeSecs !== null || totalSecs !== null) {
-            h += '<div style="margin-top:6px;font-size:0.85rem;font-weight:700;">';
-            if (makeSecs !== null) {
-                h += '<div style="color:'+makeColor(makeSecs)+';">⏱ Make: '+fmtMMSS(makeSecs)+'</div>';
-            }
-            if (totalSecs !== null) {
-                h += '<div style="color:'+totalColor(totalSecs)+';margin-top:2px;">👥 Customer wait: '+fmtMMSS(totalSecs)+'</div>';
-            }
-            h += '</div>';
-        }
-        // Order-level notes
-        if (o.notes) {
-            h += '<div style="font-size:0.85rem;color:var(--warning);font-weight:600;margin-top:6px;">📝 '+esc(o.notes)+'</div>';
-        }
-        // Items
-        const itemsForDisplay = (o.all_items && o.all_items.length) ? o.all_items : (o.items || []);
-        if (itemsForDisplay.length) {
-            h += '<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;">';
-            itemsForDisplay.forEach(it => {
-                const isChild = it.isMod || it.isTopping || it.isSundaeTopping;
-                const indent = isChild ? 'padding-left:14px;color:var(--text-dim);font-size:0.85rem;' : 'font-weight:600;font-size:0.95rem;';
-                const icon = isChild ? '↳ ' : '• ';
-                h += '<div style="margin-top:3px;'+indent+'">';
-                h += icon + esc(it.name || '');
-                if (it.flavors) h += ' <span style="color:var(--text-dim);">— '+esc(it.flavors)+'</span>';
-                if (it.qty && it.qty > 1) h += ' <span style="color:var(--text-dim);">×'+it.qty+'</span>';
-                h += '</div>';
-                if (it.itemNote) h += '<div style="padding-left:14px;font-size:0.8rem;color:var(--warning);">📝 '+esc(it.itemNote)+'</div>';
-                if (it.allergyAlert) h += '<div style="padding-left:14px;font-size:0.8rem;color:#fca5a5;font-weight:700;">⚠️ ALLERGY</div>';
-                if (it.freeSprinkles) h += '<div style="padding-left:14px;font-size:0.8rem;color:#16a34a;font-weight:700;">🎉 Free Sprinkles</div>';
-            });
-            h += '</div>';
-        }
-        h += '<div style="font-size:0.8rem;color:var(--success);font-weight:600;margin-top:6px;">✓ Completed</div>';
-        h += '</div>';
-    });
-    list.innerHTML = h;
-}
-
-function orderAge(ts){if(!ts)return '';const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'Just now';if(m<60)return m+'m ago';return Math.floor(m/60)+'h '+(m%60)+'m';}
-
-// ===== CLAIM NEXT =====
-$('claimNextBtn').addEventListener('click', claimNextOrder);
-
-async function claimNextOrder(){
-    if (claiming) return;
-    claiming = true;
-    const btn = $('claimNextBtn');
-    const msg = $('claimNextMsg');
-    btn.disabled = true;
-    btn.textContent = '⏳ Claiming...';
-    msg.textContent = '';
-    try {
-        const r = await apiGet('claimnextorder', {
-            location: LOCATION,
-            employee_id: currentEmployee.id,
-            employee_name: currentEmployee.name
-        });
-        if (r.success) {
-            const claimedAt = new Date().toISOString();
-            activeOrder = {
-                order_id: r.order_id,
-                items: r.items || [],
-                car_name: r.car_name || '',
-                notes: r.notes || '',
-                payment_type: r.payment_type || '',
-                order_type: r.order_type || 'DRIVE-THRU',
-                claimed_by: currentEmployee.name,
-                claimed_at: claimedAt,
-                created_at: r.created_at || null
-            };
-            workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
-            claiming = false;
-            btn.disabled = false;
-            btn.textContent = '⚡ Claim Next Order';
-            // Optimistically update the banner: one moved from "to claim" to "making".
-            // Next poll will correct any drift from concurrent claims.
-            queueStatus.queue_count    = Math.max(0, (queueStatus.queue_count    || 0) - 1);
-            queueStatus.priority_count = (queueStatus.priority_count || 0) + 1;
-            renderQueueBanners();
-            showWorkScreen();
-            startMakeTimer(claimedAt);
-        } else {
-            claiming = false;
-            btn.disabled = false;
-            btn.textContent = '⚡ Claim Next Order';
-            const reason = r.reason || r.error || 'Could not claim';
-            msg.textContent = reason;
-            setTimeout(()=>{ if (msg.textContent === reason) msg.textContent = ''; }, 4000);
-            fetchQueueStatus();
-        }
-    } catch(e) {
-        claiming = false;
-        btn.disabled = false;
-        btn.textContent = '⚡ Claim Next Order';
-        msg.textContent = 'Connection error — try again';
-    }
-}
-
-// ===== OVERRIDE TAKEOVER (managers) =====
-async function openOverrideModal(){
-    const modal = $('overrideModal');
-    const list = $('overrideList');
-    list.innerHTML = '<div class="override-empty">Loading...</div>';
-    modal.classList.add('show');
-    try {
-        const all = await apiGet('getpendingorders',{location:LOCATION});
-        const active = all.filter(o => o.claimed_by && !o.completed_at);
-        if (!active.length) {
-            list.innerHTML = '<div class="override-empty">No active orders to take over</div>';
-            return;
-        }
-        let h = '';
-        active.forEach(o => {
-            const wc = (o.items||[]).filter(i=>i.needsWeigh).length;
-            const pc = (o.items||[]).filter(i=>!i.needsWeigh).length;
-            h += '<button class="override-order-btn" data-oid="'+esc(o.order_id)+'">';
-            h += '<div style="font-weight:800;">'+esc(o.car_name||'No Car')+' — '+esc(o.order_id)+'</div>';
-            h += '<div style="font-size:0.8rem;color:var(--warning);margin-top:2px;">Claimed by '+esc(o.claimed_by)+(o.claimed_at?' • '+orderAge(o.claimed_at):'')+'</div>';
-            h += '<div style="font-size:0.8rem;color:var(--text-dim);margin-top:2px;">'+(wc?wc+' weigh · ':'')+(pc?pc+' prep':'')+'</div>';
-            h += '</button>';
-        });
-        list.innerHTML = h;
-        list.querySelectorAll('.override-order-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const oid = btn.dataset.oid;
-                const o = active.find(x => x.order_id === oid);
-                if (!o) return;
-                if (!confirm('Take over order '+o.order_id+' from '+o.claimed_by+'?')) return;
-                overrideClaim(o);
-            });
-        });
-    } catch(e) {
-        list.innerHTML = '<div class="override-empty">Connection error</div>';
-    }
-}
-$('overrideCancelBtn').addEventListener('click', ()=> $('overrideModal').classList.remove('show'));
-
-async function overrideClaim(order){
-    $('overrideModal').classList.remove('show');
-    try {
-        const r = await apiGet('claimorder', {
-            order_id: order.order_id,
-            employee_id: currentEmployee.id,
-            employee_name: currentEmployee.name
-        });
-        if (r.success) {
-            const claimedAt = new Date().toISOString();
-            activeOrder = {
-                order_id: order.order_id,
-                items: r.items || order.items || [],
-                car_name: order.car_name || '',
-                notes: order.notes || '',
-                payment_type: order.payment_type || '',
-                order_type: order.order_type || 'DRIVE-THRU',
-                claimed_by: currentEmployee.name,
-                claimed_at: claimedAt,
-                created_at: r.created_at || order.created_at || null
-            };
-            workItems = activeOrder.items.map((item,idx)=>({...item,idx,done:false,weightOz:null,skipped:false,skipReason:null}));
-            showWorkScreen();
-            startMakeTimer(claimedAt);
-            showToast('Took over '+order.order_id);
-        } else {
-            showToast(r.error||r.reason||'Could not take over',true);
-        }
-    } catch(e) {
-        showToast('Connection error',true);
-    }
-}
-
-// ===== WORK SCREEN =====
-function showWorkScreen(){
-    $('claimNextScreen').classList.remove('active');$('orderWorkScreen').classList.add('active');
-    $('workCar').textContent=activeOrder.car_name||'No Car';
-    $('workMeta').textContent=activeOrder.order_id+(activeOrder.payment_type?' • '+activeOrder.payment_type:'');
-    $('workNotes').textContent=activeOrder.notes?'📝 '+activeOrder.notes:'';
-    $('workNotes').style.display=activeOrder.notes?'block':'none';
-
-    const badgeEl=$('workOrderTypeBadge');
-    if(activeOrder.order_type==='WALK-UP'){
-        badgeEl.innerHTML='<span class="work-order-type-badge walkup">🚶 WALK-UP — COUNTER</span>';
+  for (var start = 0; start < punches.length; start += BATCH_SIZE) {
+    var batch = punches.slice(start, start + BATCH_SIZE);
+    Logger.log('Archiving batch ' + (start / BATCH_SIZE + 1) + ' (' + batch.length + ' punches)...');
+    var ok = ws_archiveTimePunchesToBigQuery(batch, userMap);
+    if (ok) {
+      totalArchived += batch.length;
     } else {
-        badgeEl.innerHTML='<span class="work-order-type-badge drivethru">🚗 DRIVE-THRU — WINDOW</span>';
+      failedBatches++;
     }
+    Utilities.sleep(500);
+  }
 
-    renderWorkItems();
+  Logger.log('Backfill complete. ' + totalArchived + ' / ' + punches.length + ' punches. Failed batches: ' + failedBatches);
+  return { archived: totalArchived, total: punches.length, failedBatches: failedBatches };
 }
 
-function renderWorkItems(){
-    const parents=[];
-    workItems.forEach(i=>{
-        if(i.isMod||i.isTopping||i.isSundaeTopping){
-            if(parents.length>0){
-                if(!parents[parents.length-1].mods)parents[parents.length-1].mods=[];
-                parents[parents.length-1].mods.push(i);
-            }
-        } else {
-            i.mods=[];
-            parents.push(i);
-        }
+
+/**
+ * Daily sync entry point — pulls yesterday's completed time punches.
+ * Designed to run as a daily trigger at ~5 AM Mountain.
+ */
+function ws_dailyTimePunchSync() {
+  var now = new Date();
+  // Yesterday's window in Mountain Time, converted to UTC
+  // Yesterday 00:00 MT → today 00:00 MT
+  var yesterdayMT = Utilities.formatDate(new Date(now.getTime() - 24 * 60 * 60 * 1000), 'America/Denver', 'yyyy-MM-dd');
+  var todayMT     = Utilities.formatDate(now, 'America/Denver', 'yyyy-MM-dd');
+
+  // 7shifts accepts ISO with timezone; use Mountain offset
+  var startISO = yesterdayMT + 'T00:00:00-07:00';  // MDT in summer; MST winter is -07
+  var endISO   = todayMT + 'T00:00:00-07:00';
+
+  Logger.log('Daily time punch sync: ' + startISO + ' → ' + endISO);
+
+  var punches = ws_pullTimePunches(startISO, endISO);
+  if (punches.length === 0) {
+    Logger.log('No completed punches yesterday');
+    return { archived: 0 };
+  }
+
+  var ok = ws_archiveTimePunchesToBigQuery(punches);
+  return { archived: ok ? punches.length : 0, ok: ok };
+}
+// ============================================================================
+// TRIGGER MANAGEMENT — daily time punch sync
+// ============================================================================
+
+/**
+ * Install the daily 5 AM Mountain trigger for ws_dailyTimePunchSync.
+ * Idempotent — safe to run multiple times. Removes any existing triggers
+ * for ws_dailyTimePunchSync first to prevent duplicates.
+ *
+ * Run this ONCE from the Apps Script editor.
+ */
+function ws_installDailyTimePunchTrigger() {
+  // Remove any existing triggers for this function (prevents duplicates if re-run)
+  var triggers = ScriptApp.getProjectTriggers();
+  var removed = 0;
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'ws_dailyTimePunchSync') {
+      ScriptApp.deleteTrigger(triggers[i]);
+      removed++;
+    }
+  }
+  if (removed > 0) Logger.log('Removed ' + removed + ' existing trigger(s)');
+
+  // Create the new daily trigger at 5 AM Mountain
+  // Note: trigger times use the Apps Script project's timezone (set in appsscript.json)
+  var trigger = ScriptApp.newTrigger('ws_dailyTimePunchSync')
+    .timeBased()
+    .atHour(5)
+    .everyDays(1)
+    .create();
+
+  Logger.log('✅ Installed daily trigger for ws_dailyTimePunchSync');
+  Logger.log('   Trigger ID: ' + trigger.getUniqueId());
+  Logger.log('   Will fire daily between 5:00-6:00 AM (script timezone)');
+
+  // Verify project timezone is Mountain
+  var tz = Session.getScriptTimeZone();
+  Logger.log('   Script timezone: ' + tz);
+  if (tz !== 'America/Denver') {
+    Logger.log('⚠️  WARNING: Script timezone is "' + tz + '", not "America/Denver".');
+    Logger.log('   The trigger will fire at 5 AM in ' + tz + ', which may not be 5 AM Mountain.');
+    Logger.log('   To fix: Project Settings → Time zone → set to (GMT-07:00) Denver');
+  }
+
+  return { triggerId: trigger.getUniqueId(), timezone: tz };
+}
+
+
+/**
+ * List all currently installed triggers — useful for verification/debugging.
+ */
+function ws_listAllTriggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  Logger.log('Found ' + triggers.length + ' trigger(s):');
+  for (var i = 0; i < triggers.length; i++) {
+    var t = triggers[i];
+    Logger.log('  [' + (i + 1) + '] Function: ' + t.getHandlerFunction() +
+               ' | Type: ' + t.getEventType() +
+               ' | Source: ' + t.getTriggerSource() +
+               ' | ID: ' + t.getUniqueId());
+  }
+  return triggers.length;
+}
+
+
+/**
+ * Remove the daily time punch trigger. Use this if you ever need to disable
+ * the auto-sync (e.g., for testing, or to switch frequency).
+ */
+function ws_removeDailyTimePunchTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var removed = 0;
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'ws_dailyTimePunchSync') {
+      ScriptApp.deleteTrigger(triggers[i]);
+      removed++;
+    }
+  }
+  Logger.log('Removed ' + removed + ' time punch sync trigger(s)');
+  return removed;
+}
+function dta_debug_triggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  Logger.log('Total triggers: ' + triggers.length);
+  triggers.forEach(function(t, i) {
+    var info = '[' + (i+1) + '] ' + t.getHandlerFunction() + ' | ' + t.getEventType();
+    if (t.getEventType() === ScriptApp.EventType.CLOCK) {
+      info += ' | source: ' + t.getTriggerSource();
+    }
+    Logger.log(info);
+  });
+}
+/**
+ * DEBUG: for each (day-of-week, hour) cell in the heatmap, show:
+ *   - count of orders in orders_archive (BigQuery) for the last 7 days
+ *   - the actual dates each row maps to
+ * This tells us definitively whether dashes are "no data in archive" or
+ * "data is there but heatmap renders wrong".
+ */
+function dta_debug_heatmap_truth() {
+  var range = dta_resolveRange_('7d');
+  
+  // Get every order's archive timestamp + computed dow/hour for the window
+  var sql =
+    'SELECT ' +
+    '  DATE(created_at, "America/Denver") AS local_date, ' +
+    '  EXTRACT(DAYOFWEEK FROM DATETIME(created_at, "America/Denver")) AS dow_sun_first, ' +
+    '  EXTRACT(HOUR FROM DATETIME(created_at, "America/Denver")) AS hour_of_day, ' +
+    '  COUNT(*) AS n ' +
+    'FROM `' + DTA_PROJECT + '.' + DTA_DATASET + '.orders_archive` ' +
+    'WHERE ' + range.sql + ' ' +
+    '  AND created_at IS NOT NULL ' +
+    'GROUP BY local_date, dow_sun_first, hour_of_day ' +
+    'ORDER BY local_date, hour_of_day';
+  
+  var rows = dta_query_(sql);
+  Logger.log('=== orders_archive contents for last 7 days ===');
+  Logger.log('Total cells with data: ' + rows.length);
+  Logger.log('');
+  
+  // Group by date so we can see each day's coverage
+  var byDate = {};
+  rows.forEach(function(r) {
+    var d = r.local_date;
+    if (!byDate[d]) byDate[d] = { dow: r.dow_sun_first, hours: {} };
+    byDate[d].hours[r.hour_of_day] = r.n;
+  });
+  
+  var dayNames = {1:'Sun', 2:'Mon', 3:'Tue', 4:'Wed', 5:'Thu', 6:'Fri', 7:'Sat'};
+  
+  var dates = Object.keys(byDate).sort();
+  Logger.log('Per-day coverage (each cell = order count for that hour):');
+  Logger.log('Date         Day  11a 12p  1p  2p  3p  4p  5p  6p  7p  8p  9p  10p  TOTAL');
+  dates.forEach(function(d) {
+    var info = byDate[d];
+    var line = d + '   ' + dayNames[info.dow] + '  ';
+    var total = 0;
+    for (var h = 11; h <= 22; h++) {
+      var n = info.hours[h] || 0;
+      line += String(n).padStart(3, ' ') + ' ';
+      total += n;
+    }
+    // also count any hours <11 or >22 that might exist
+    var allHrs = Object.keys(info.hours);
+    var outsideHrs = 0;
+    allHrs.forEach(function(h){ if (h < 11 || h > 22) outsideHrs += info.hours[h]; });
+    line += '  ' + total + (outsideHrs ? ' (+' + outsideHrs + ' outside 11-22)' : '');
+    Logger.log(line);
+  });
+  
+  Logger.log('');
+  Logger.log('=== What lives in OrderQueue right now (not yet archived) ===');
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var createdIdx = headers.indexOf('created_at');
+  var completedIdx = headers.indexOf('completed_at');
+  var orderIdIdx = headers.indexOf('order_id');
+  var locIdx = headers.indexOf('location');
+  
+  Logger.log('OrderQueue row count: ' + (data.length - 1));
+  Logger.log('Header indices: created_at=' + createdIdx + ' completed_at=' + completedIdx + ' location=' + locIdx);
+  Logger.log('');
+  
+  // Bucket OrderQueue rows by date+hour, like the heatmap
+  var queueByDateHour = {};
+  var noTimestamp = 0;
+  for (var i = 1; i < data.length; i++) {
+    var ts = data[i][createdIdx];
+    if (!ts) { noTimestamp++; continue; }
+    var d = new Date(ts);
+    var localDateStr = Utilities.formatDate(d, 'America/Denver', 'yyyy-MM-dd');
+    var localHour = parseInt(Utilities.formatDate(d, 'America/Denver', 'H'), 10);
+    var key = localDateStr + '_' + localHour;
+    queueByDateHour[key] = (queueByDateHour[key] || 0) + 1;
+  }
+  Logger.log('Rows with no created_at: ' + noTimestamp);
+  Logger.log('');
+  Logger.log('OrderQueue distribution (date_hour: count):');
+  Object.keys(queueByDateHour).sort().forEach(function(k) {
+    Logger.log('  ' + k + ': ' + queueByDateHour[k]);
+  });
+}
+/**
+ * DEBUG: dump OrderQueue rows for today, showing both created_at and
+ * completed_at, so we can see if the live archive should have fired.
+ */
+function dta_debug_today_queue() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  
+  Logger.log('Headers: ' + JSON.stringify(headers));
+  Logger.log('');
+  
+  var orderIdIdx = headers.indexOf('order_id');
+  var createdIdx = headers.indexOf('created_at');
+  var completedIdx = headers.indexOf('completed_at');
+  var locIdx = headers.indexOf('location');
+  
+  var todayStr = Utilities.formatDate(new Date(), 'America/Denver', 'yyyy-MM-dd');
+  Logger.log('Today (Denver): ' + todayStr);
+  Logger.log('');
+  Logger.log('order_id | location | created_at (Denver) | completed_at (Denver) | hour_created | hour_completed');
+  Logger.log('---');
+  
+  var todayCount = 0, missingCreated = 0, missingCompleted = 0;
+  
+  for (var i = 1; i < data.length; i++) {
+    var oid = data[i][orderIdIdx];
+    var ts = data[i][createdIdx];
+    var ct = data[i][completedIdx];
+    var loc = data[i][locIdx];
+    
+    if (!ts) {
+      missingCreated++;
+      Logger.log(oid + ' | ' + loc + ' | (NO CREATED_AT) | ' + (ct ? new Date(ct).toString() : 'NO_COMPLETED') + ' | -- | --');
+      continue;
+    }
+    
+    var createdDate = new Date(ts);
+    var localDateStr = Utilities.formatDate(createdDate, 'America/Denver', 'yyyy-MM-dd');
+    
+    if (localDateStr !== todayStr) continue; // only today
+    todayCount++;
+    
+    var localCreatedHour = Utilities.formatDate(createdDate, 'America/Denver', 'yyyy-MM-dd HH:mm');
+    var localCompletedHour = ct ? Utilities.formatDate(new Date(ct), 'America/Denver', 'yyyy-MM-dd HH:mm') : 'NOT_COMPLETED';
+    
+    if (!ct) missingCompleted++;
+    
+    Logger.log(oid + ' | ' + loc + ' | ' + localCreatedHour + ' | ' + localCompletedHour);
+  }
+  
+  Logger.log('');
+  Logger.log('Today total: ' + todayCount);
+  Logger.log('Missing completed_at (still in progress): ' + missingCompleted);
+  Logger.log('Rows with no created_at at all: ' + missingCreated);
+}
+/**
+ * One-shot: archive every completed OrderQueue row that doesn't appear to
+ * be in BigQuery yet. Used to recover from missing-data situations in the
+ * heatmap. SAFE TO RUN MULTIPLE TIMES — we check BigQuery for existing
+ * order_ids first and only archive what's missing.
+ */
+function ws_emergencyBackfill() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var orderIdIdx = headers.indexOf('order_id');
+  var completedIdx = headers.indexOf('completed_at');
+
+  // Build list of completed orders in the sheet
+  var completedRows = [];
+  var completedIds = [];
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][orderIdIdx] && data[i][completedIdx]) {
+      completedRows.push(data[i]);
+      completedIds.push(String(data[i][orderIdIdx]));
+    }
+  }
+  Logger.log('Found ' + completedRows.length + ' completed orders in OrderQueue');
+  if (completedRows.length === 0) return { archived: 0 };
+
+  // Check BigQuery for which order_ids are already archived
+  var projectId = 'vivid-monitor-448419-s4';
+  var idList = completedIds.map(function(id){ return '"' + id.replace(/"/g, '\\"') + '"'; }).join(',');
+  var checkSql = 'SELECT DISTINCT order_id FROM `' + projectId + '.operations.orders_archive` WHERE order_id IN (' + idList + ')';
+  var checkResult = BigQuery.Jobs.query({ query: checkSql, useLegacySql: false }, projectId);
+  var existing = {};
+  if (checkResult.rows) {
+    checkResult.rows.forEach(function(r) {
+      existing[r.f[0].v] = true;
     });
-    const priorityPending = parents.some(i => isPriorityItem(i) && !i.done);
+  }
+  Logger.log('Already in BigQuery: ' + Object.keys(existing).length);
 
-    // Three buckets: priority (mixed weigh+prep), non-priority weigh, non-priority prep.
-    // Priority items always render first regardless of type, so a scooper scanning
-    // a long order doesn't miss a shake/sundae/split sitting at the bottom of the
-    // list. Within priority, weigh items come before prep (typical workflow order).
-    const priority = parents.filter(i => isPriorityItem(i));
-    priority.sort((a, b) => (a.needsWeigh ? 0 : 1) - (b.needsWeigh ? 0 : 1));
-    const wi = parents.filter(i => i.needsWeigh && !isPriorityItem(i));
-    const pi = parents.filter(i => !i.needsWeigh && !isPriorityItem(i));
+  // Filter to rows NOT already in BigQuery
+  var rowsToArchive = completedRows.filter(function(row) {
+    return !existing[String(row[orderIdIdx])];
+  });
+  Logger.log('Need to archive: ' + rowsToArchive.length);
+  if (rowsToArchive.length === 0) return { archived: 0, alreadyArchived: completedRows.length };
 
-    let h='';
-    if(priorityPending){
-        h+='<div style="grid-column:1 / -1;background:rgba(245,158,11,0.15);border:2px solid #f59e0b;border-radius:10px;padding:10px 14px;margin-bottom:4px;color:#f59e0b;font-weight:700;font-size:0.9rem;text-align:center;">⚡ Make the highlighted items first — other items are locked until they are done</div>';
+  // Archive in batches
+  var BATCH_SIZE = 200;
+  var totalArchived = 0;
+  for (var b = 0; b < rowsToArchive.length; b += BATCH_SIZE) {
+    var batch = rowsToArchive.slice(b, b + BATCH_SIZE);
+    Logger.log('Archiving batch ' + (Math.floor(b / BATCH_SIZE) + 1) + ' (' + batch.length + ' orders)...');
+    var ok = ws_archiveOrdersToBigQuery(batch, headers);
+    if (ok) totalArchived += batch.length;
+    Utilities.sleep(500);
+  }
+
+  Logger.log('=== DONE ===');
+  Logger.log('Archived: ' + totalArchived + ' / Skipped (already in BQ): ' + Object.keys(existing).length);
+  return { archived: totalArchived, alreadyArchived: Object.keys(existing).length };
+}
+/**
+ * One-time setup: replace any existing ws_cleanupOrderQueue triggers with
+ * a 15-minute recurring trigger so analytics get fresh data quickly.
+ *
+ * Run once from the editor. Safe to re-run; deletes old triggers first.
+ */
+function ws_installCleanupTrigger() {
+  var existing = ScriptApp.getProjectTriggers();
+  var removed = 0;
+  existing.forEach(function(t) {
+    if (t.getHandlerFunction() === 'ws_cleanupOrderQueue') {
+      ScriptApp.deleteTrigger(t);
+      removed++;
     }
-    // MAKE FIRST section — combined priority items at the top of the list.
-    // Each item keeps its own weigh-vs-prep visual styling (blue/purple inner)
-    // but the orange "priority" border on each card is what makes them pop as
-    // the must-do-first set. Section stays visible after completion (showing
-    // checkmarks) so the scooper has a sense of progress.
-    if(priority.length){
-        h+='<div class="section-label" style="color:#f59e0b;">⚡ MAKE FIRST ('+priority.filter(i=>i.done).length+'/'+priority.length+')</div>';
-        priority.forEach(i=>{h+=renderWorkItem(i, !!i.needsWeigh, priorityPending);});
+  });
+  Logger.log('Removed ' + removed + ' existing ws_cleanupOrderQueue trigger(s)');
+
+  ScriptApp.newTrigger('ws_cleanupOrderQueue')
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+  Logger.log('Installed new 15-minute trigger');
+}
+/**
+ * Auto-close any orders that were left open at end of day. Runs nightly
+ * at 11:30 PM Mountain. For each OrderQueue row created today that's
+ * NOT picked up or completed, stamps timestamps to "now" and tags the
+ * notes column with "[auto-closed]" so analytics can exclude them.
+ *
+ * Without this, orders left open by staff (forgot to mark picked up,
+ * customer drove away without paying, etc.) sit in the queue forever
+ * with absurd wait times, polluting the wait-time heatmap and making
+ * the live panel show a phantom queue depth the next morning.
+ */
+function ws_autoCloseStaleOrders() {
+  var ss = SpreadsheetApp.openById(ORDER_QUEUE_SHEET_ID);
+  var sheet = ss.getSheetByName(ORDER_QUEUE_TAB);
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return { closed: 0 };
+  
+  var headers = data[0];
+  var H = {
+    order_id:     headers.indexOf('order_id'),
+    created_at:   headers.indexOf('created_at'),
+    picked_up_at: headers.indexOf('picked_up_at'),
+    completed_at: headers.indexOf('completed_at'),
+    notes:        headers.indexOf('notes'),
+    car_name:     headers.indexOf('car_name')
+  };
+  
+  // "Today" in Denver — anything older than 24h ago is old enough to ignore
+  var cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+  var nowIso = new Date().toISOString();
+  
+  var closed = [];
+  for (var i = 1; i < data.length; i++) {
+    var oid = data[i][H.order_id];
+    var createdAt = data[i][H.created_at];
+    var pickedUpAt = data[i][H.picked_up_at];
+    var completedAt = data[i][H.completed_at];
+    
+    if (!oid || !createdAt) continue;
+    
+    var createdMs = new Date(createdAt).getTime();
+    if (isNaN(createdMs)) continue;
+    if (createdMs < cutoffMs) continue;  // old order, leave for cleanup
+    
+    // Skip if already closed out properly
+    if (pickedUpAt && completedAt) continue;
+    
+    // Stamp the missing timestamps to now
+    var rowNum = i + 1;
+    if (!completedAt) sheet.getRange(rowNum, H.completed_at + 1).setValue(nowIso);
+    if (!pickedUpAt) sheet.getRange(rowNum, H.picked_up_at + 1).setValue(nowIso);
+    
+    // Tag notes so analytics can exclude
+    var existingNotes = String(data[i][H.notes] || '');
+    var newNotes = existingNotes ? existingNotes + ' [auto-closed]' : '[auto-closed]';
+    sheet.getRange(rowNum, H.notes + 1).setValue(newNotes);
+    
+    closed.push({ order_id: oid, car: data[i][H.car_name] });
+  }
+  
+  if (closed.length > 0) {
+    SpreadsheetApp.flush();
+    Logger.log('ws_autoCloseStaleOrders: closed ' + closed.length + ' stale orders:');
+    closed.forEach(function(c) { Logger.log('  - ' + c.order_id + ' (' + c.car + ')'); });
+  } else {
+    Logger.log('ws_autoCloseStaleOrders: no stale orders to close');
+  }
+  
+  return { closed: closed.length, orders: closed };
+}
+
+/**
+ * Install the nightly auto-close trigger at 11:30 PM Mountain.
+ * Idempotent — safe to re-run.
+ */
+function ws_installAutoCloseTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var removed = 0;
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'ws_autoCloseStaleOrders') {
+      ScriptApp.deleteTrigger(triggers[i]);
+      removed++;
     }
-    if(wi.length){h+='<div class="section-label weigh">⚖️ WEIGH ('+wi.filter(i=>i.done).length+'/'+wi.length+')</div>';wi.forEach(i=>{h+=renderWorkItem(i,true,priorityPending);});}
-    if(pi.length){h+='<div class="section-label prep">☑ PREP ('+pi.filter(i=>i.done).length+'/'+pi.length+')</div>';pi.forEach(i=>{h+=renderWorkItem(i,false,priorityPending);});}
-    $('itemsScroll').innerHTML=h;
-    $('itemsScroll').querySelectorAll('.work-item').forEach(el=>{el.addEventListener('click',()=>handleItemTap(parseInt(el.dataset.idx)));});
-    updateCompleteBtn();
-    saveProgressDebounced();
+  }
+  if (removed > 0) Logger.log('Removed ' + removed + ' existing trigger(s)');
+  
+  var t = ScriptApp.newTrigger('ws_autoCloseStaleOrders')
+    .timeBased()
+    .atHour(23)
+    .nearMinute(30)
+    .everyDays(1)
+    .create();
+  Logger.log('Auto-close trigger installed: ' + t.getUniqueId() + ' (~11:30 PM)');
+  return t.getUniqueId();
 }
 
-function renderWorkItem(item,isWeigh,priorityPending){
-    const tc=isWeigh?'weigh-item':'prep-item',dc=item.done?' done':'',ic=isWeigh?'⚖️':'☑';
-    const isPriority = isPriorityItem(item);
-    const priorityClass = isPriority ? ' priority' : '';
-    const lockedClass = '';
-    let wt='';
-    if(item.done&&item.weightOz!==null){const d=item.weightOz-item.targetOz;let wc='good';if(Math.abs(d)>TOLERANCE)wc=d>0?'over':'under';wt='<div class="work-item-weight '+wc+'">✓ '+item.weightOz.toFixed(1)+' oz</div>';}
-    else if(item.done&&item.skipped){wt='<div class="work-item-weight under">⚠ Not weighed'+(item.skipReason?' - '+item.skipReason:'')+'</div>';}
-    else if(item.done){wt='<div class="work-item-weight good">✓ Done</div>';}
-    let h='<div class="work-item '+tc+dc+priorityClass+lockedClass+'" data-idx="'+item.idx+'"><div class="work-item-top">';
-    h+='<span class="work-item-name"><span class="item-type-icon">'+ic+'</span> '+esc(item.name);
-    if(isPriority&&!item.done)h+='<span class="priority-badge">⚡ MAKE FIRST</span>';
-    h+='</span>';
-    if(isWeigh&&item.targetOz)h+='<span class="work-item-target">Target: '+item.targetOz+' oz</span>';
-    if(item.done)h+='<span class="item-check">✓</span>';
-    h+='</div>';
-    if(item.flavors){
-        // For single pints, the boolean handPacked flag drives the prefix.
-        // For Pint Pairs, the prefix is already baked into the flavors string
-        // per-flavor (e.g., "Hand Packed Dirty Chai, Orange Creamsicle") so we
-        // don't apply a top-level prefix here. We DO style any "Hand Packed"
-        // text inside the string so it stands out visually.
-        var prefixedFlavors = esc(item.flavors).replace(/Hand Packed /g,
-            '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> ');
-        var handPackedPrefix = (item.handPacked && item.sku !== 'PINTPAIR')
-            ? '<span style="color:#c084fc;font-weight:800;">Hand Packed</span> '
-            : '';
-        h+='<div class="work-item-flavors">'+handPackedPrefix+prefixedFlavors+'</div>';
+
+// ============================================================================
+// SCHEDULED SHIFTS ARCHIVE — phase 1 of "scheduled vs actual" heatmap
+// ============================================================================
+// Pulls scheduled shifts from 7shifts and archives them to BigQuery.
+// Mirrors the time_punches pipeline. Garden of the Gods only.
+//
+// Functions:
+//   ws_pullScheduledShifts(startISO, endISO)           — fetch from 7shifts API
+//   ws_archiveScheduledShiftsToBigQuery(shifts, userMap) — write to BigQuery
+//   ws_backfillScheduledShifts(days)                   — one-time historical pull
+//   ws_dailyScheduledShiftsSync()                      — daily trigger entry point
+//   ws_dailyScheduledShiftsSyncRetry()                 — 6 AM retry guard
+//   ws_installScheduledShiftsTriggers()                — install both triggers
+
+var WS_SS_TABLE = 'scheduled_shifts';
+
+
+/**
+ * Fetch scheduled shifts from 7shifts for a date range.
+ * Filters server-side to Garden of the Gods (location WS_GG_LOCATION_ID).
+ * Includes both published and draft shifts; excludes deleted.
+ *
+ * @param {string} startISO - ISO timestamp for start[gte]
+ * @param {string} endISO   - ISO timestamp for start[lte]
+ * @return {Array<Object>}  Raw 7shifts shift objects
+ */
+function ws_pullScheduledShifts(startISO, endISO) {
+  var token = FA_CONFIG.SEVENSHIFT_TOKEN;
+  var companyId = FA_CONFIG.SEVENSHIFT_COMPANY_ID || '224651';
+
+  var baseUrl = 'https://api.7shifts.com/v2/company/' + companyId + '/shifts' +
+    '?location_id=' + WS_GG_LOCATION_ID +
+    '&start[gte]=' + encodeURIComponent(startISO) +
+    '&start[lte]=' + encodeURIComponent(endISO) +
+    '&deleted=false' +
+    '&limit=100';
+
+  var options = {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    },
+    muteHttpExceptions: true
+  };
+
+  var allShifts = [];
+  var cursor = null;
+  var pageCount = 0;
+
+  do {
+    var url = cursor ? baseUrl + '&cursor=' + encodeURIComponent(cursor) : baseUrl;
+    var response = UrlFetchApp.fetch(url, options);
+    var code = response.getResponseCode();
+
+    if (code !== 200) {
+      Logger.log('[7shifts] Scheduled shifts fetch HTTP ' + code + ': ' + response.getContentText().substring(0, 300));
+      throw new Error('7shifts shifts API error: ' + code);
     }
-    if(item.sundaeToppingNote)h+='<div class="work-item-flavors" style="color:#f59e0b;">'+esc(item.sundaeToppingNote)+'</div>';
-    if(item.extraToppings&&item.extraToppings.length)h+='<div class="work-item-note">Extra: '+esc(item.extraToppings.join(', '))+'</div>';
-    if(item.allergyAlert)h+='<div class="work-item-allergy">⚠️🧤 ALLERGY — GLOVES + ALLERGY SCOOP + NEW TUB</div>';
-    if(item.freeSprinkles)h+='<div class="work-item-sprinkles">🎉 Free Sprinkles</div>';
-    if(item.itemNote)h+='<div class="work-item-note">📝 '+esc(item.itemNote)+'</div>';
-    if(item.mods&&item.mods.length)item.mods.forEach(m=>{h+='<div class="work-item-mod">'+esc(m.name)+'</div>';});
-    if(lockedClass)h+='<div class="locked-hint">🔒 Locked until shake/sundae/split is done</div>';
-    h+=wt+'</div>';return h;
-}
 
-// ===== ITEM TAP =====
-function handleItemTap(idx){
-    const item=workItems[idx];if(!item)return;
-    // Priority items (shakes/sundaes/splits) are SUGGESTED first via the
-    // ⚡ MAKE FIRST badge, but no longer enforced. Scoopers can work in any order.
-    if(item.done){item.done=false;item.weightOz=null;item.skipped=false;item.skipReason=null;renderWorkItems();return;}
-    if(item.needsWeigh){
-        if(scaleState!=='live'){item.done=true;item.skipped=true;item.skipReason='Scale not connected';renderWorkItems();showToast('✓ '+item.name+' marked done (no scale)');return;}
-        if(currentWeight<=0){showToast('Place item on scale first',true);return;}
-        if(currentWeight<item.targetOz*0.5){showToast('Wait for scale to settle',true);return;}
-        const diff=currentWeight-item.targetOz;
-        if(diff<-TOLERANCE)showWeightWarning(item,currentWeight,'under');
-        else if(diff>TOLERANCE)showWeightWarning(item,currentWeight,'over');
-        else{item.done=true;item.weightOz=currentWeight;weighFeedback(item,currentWeight);renderWorkItems();}
-    }else{item.done=true;renderWorkItems();showToast('✓ '+item.name);}
-}
-// ===== WEIGHT WARNINGS =====
-function showWeightWarning(item,weight,type){
-    pendingWeighItem={item,weight};
-    $('warningWeight').textContent=weight.toFixed(1)+' oz';$('warningTarget').textContent='Target: '+item.targetOz+' oz';
-    if(type==='under'){$('warningIcon').textContent='⚠️';$('warningTitle').textContent='UNDER WEIGHT';$('warningTitle').className='modal-title warning-under';$('warningWeight').className='modal-weight warning-under';$('warningMessage').textContent='Add more ice cream and re-weigh.';$('reweighBtn').textContent='Add & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept Anyway';}
-    else{$('warningIcon').textContent='🔴';$('warningTitle').textContent='OVER WEIGHT';$('warningTitle').className='modal-title warning-over';$('warningWeight').className='modal-weight warning-over';$('warningMessage').textContent='Over target. Remove some and re-weigh, or accept as-is.';$('reweighBtn').textContent='Remove & Re-weigh';$('reweighBtn').style.display='block';$('acceptWeightBtn').textContent='Accept & Continue';}
-    $('weightWarningModal').classList.add('show');
-}
-$('reweighBtn').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;showToast('Adjust and re-weigh');});
-$('weightWarningClose').addEventListener('click',()=>{$('weightWarningModal').classList.remove('show');pendingWeighItem=null;});
-$('acceptWeightBtn').addEventListener('click',()=>{
-    if(pendingWeighItem){const i=pendingWeighItem.item;i.done=true;i.weightOz=pendingWeighItem.weight;weighFeedback(i,pendingWeighItem.weight);renderWorkItems();}
-    $('weightWarningModal').classList.remove('show');pendingWeighItem=null;
-});
-function weighFeedback(item,w){
-    const d=Math.abs(w-item.targetOz);let e,m;
-    if(d<=0.2){e='🎯';m='PERFECT!';}else if(d<=TOLERANCE){e='👍';m='Good!';}else if(w<item.targetOz){e='⚠️';m='Under';}else{e='😬';m='Over';}
-    $('scaleFeedback').textContent=e+' '+m;showToast(e+' '+item.name+': '+w.toFixed(1)+' oz - '+m,d>TOLERANCE);
-}
-
-// ===== COMPLETE =====
-function updateCompleteBtn(){
-    const btn=$('completeBtn');
-    const countable=workItems.filter(i=>!i.isMod&&!i.isTopping&&!i.isSundaeTopping);
-    const total=countable.length,done=countable.filter(i=>i.done).length,rem=total-done;
-    if(!total){btn.disabled=true;btn.textContent='NO ITEMS';return;}
-    btn.disabled=false;
-    if(!rem){btn.className='complete-btn ready';btn.textContent='Mark Order as Complete';}
-    else{btn.className='complete-btn partial';btn.textContent='⚠ Mark Complete ('+rem+' not done)';}
-}
-$('completeBtn').addEventListener('click',()=>{
-    const rem=workItems.filter(i=>!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping);
-    if(rem.length)showSkipWarning(rem);else completeOrder();
-});
-
-let selectedSkipReason=null;
-function showSkipWarning(rem){
-    const wr=rem.filter(i=>i.needsWeigh),pr=rem.filter(i=>!i.needsWeigh);
-    let m='';if(wr.length)m+=wr.length+' item(s) not weighed. ';if(pr.length)m+=pr.length+' item(s) not prepped. ';
-    $('skipMessage').textContent=m;selectedSkipReason=null;$('skipConfirmBtn').disabled=true;
-    $('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));
-    $('skipWarningModal').classList.add('show');
-}
-$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(btn=>{
-    btn.addEventListener('click',()=>{selectedSkipReason=btn.dataset.reason;$('skipReasons').querySelectorAll('.skip-reason-btn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');$('skipConfirmBtn').disabled=false;});
-});
-$('skipCancelBtn').addEventListener('click',()=>{$('skipWarningModal').classList.remove('show');});
-$('skipConfirmBtn').addEventListener('click',()=>{
-    workItems.forEach(i=>{if(!i.done&&!i.isMod&&!i.isTopping&&!i.isSundaeTopping){i.done=true;i.skipped=true;i.skipReason=selectedSkipReason;}});
-    $('skipWarningModal').classList.remove('show');completeOrder();
-});
-
-async function completeOrder(){
-    const btn=$('completeBtn');
-    btn.disabled=true;
-    btn.textContent='Saving...';
-
-    const payload={order_id:activeOrder.order_id,location:LOCATION,employee_id:currentEmployee.id,employee_name:currentEmployee.name,
-        items:workItems.map(i=>({item_name:i.name,sku:i.sku,flavors:i.flavors||'',needs_weigh:i.needsWeigh,target_oz:i.targetOz,weight_oz:i.weightOz,skipped:i.skipped||false,skip_reason:i.skipReason||null}))};
-
-    try{
-        const result=await apiPost('completeorder',payload);
-        if(result.success===false){
-            showToast(result.error||'Could not complete order',true);
-            btn.disabled=false;
-            updateCompleteBtn();
-            return;
-        }
-        const now=new Date().toISOString();
-        stopMakeTimer(now);
-        showToast('✓ Order complete!');
-        activeOrder=null;workItems=[];
-        $('makeTimer').style.display='none';
-        $('queueTimer').style.display='none';
-        $('orderWorkScreen').classList.remove('active');$('claimNextScreen').classList.add('active');
-        // Optimistically update the banner: one moved from "making" to "ready".
-        // Next poll will correct any drift.
-        queueStatus.priority_count = Math.max(0, (queueStatus.priority_count || 0) - 1);
-        queueStatus.ready_count    = (queueStatus.ready_count || 0) + 1;
-        renderQueueBanners();
-        fetchQueueStatus();
-    }catch(e){
-        showToast('Connection error — try again',true);
-        btn.disabled=false;
-        updateCompleteBtn();
+    var json = JSON.parse(response.getContentText());
+    if (json.data) {
+      // Keep only shifts with both start and end times
+      for (var i = 0; i < json.data.length; i++) {
+        var s = json.data[i];
+        if (s.start && s.end) allShifts.push(s);
+      }
     }
+    cursor = (json.meta && json.meta.cursor && json.meta.cursor.next) ? json.meta.cursor.next : null;
+    pageCount++;
+    if (pageCount > 50) {
+      Logger.log('[7shifts] Stopped pagination at 50 pages (safety guard)');
+      break;
+    }
+  } while (cursor);
+
+  Logger.log('[7shifts] Pulled ' + allShifts.length + ' scheduled shifts (' + pageCount + ' pages) for ' + WS_GG_LOCATION_ID);
+  return allShifts;
 }
-// INIT
-if(navigator.hid){autoConnectScale();}else{$('scaleIndicator').textContent='No WebHID';$('loginScaleBtn').textContent='WebHID not supported';$('loginScaleBtn').disabled=true;}
-</script>
-</body>
-</html>
+
+
+/**
+ * Archive scheduled shifts to BigQuery scheduled_shifts table.
+ * Idempotent: deletes existing rows for the affected shift_dates, then inserts
+ * fresh data. This is bulletproof against re-runs because BigQuery's streaming
+ * insertId dedup is best-effort and unreliable.
+ *
+ * Note: rows in the BQ streaming buffer (~90 min after insert) cannot be DELETEd.
+ * The daily/backfill cadence is well outside that window in production. The only
+ * scenario that hits the buffer block is back-to-back manual reruns within 90
+ * minutes — caller should TRUNCATE in that case.
+ *
+ * @param {Array<Object>} shifts - 7shifts shift objects (with start/end set)
+ * @param {Object<number,string>} userMap - optional user_id → "First Last" map
+ * @return {boolean} true on success
+ */
+function ws_archiveScheduledShiftsToBigQuery(shifts, userMap) {
+  if (!shifts || shifts.length === 0) return true;
+  if (!userMap) userMap = ws_get7shiftsUserMap();
+
+  var nowIso = new Date().toISOString();
+  var bqRows = [];
+  var datesAffected = {};  // Set of shift_date strings for the DELETE clause
+
+  for (var i = 0; i < shifts.length; i++) {
+    var s = shifts[i];
+    if (!s.id || !s.start || !s.end) continue;
+
+    var startMs = new Date(s.start).getTime();
+    var endMs = new Date(s.end).getTime();
+    var hours = null;
+    if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+      hours = (endMs - startMs) / (1000 * 60 * 60);
+    }
+
+    // Mountain-Time date for shift_date (matches time_punches convention)
+    var shiftDate = Utilities.formatDate(new Date(s.start), 'America/Denver', 'yyyy-MM-dd');
+    datesAffected[shiftDate] = true;
+
+    // 7shifts publishes a "status" field on shifts; default to 'scheduled' if missing
+    var status = s.status || (s.deleted ? 'deleted' : 'scheduled');
+
+    bqRows.push({
+      insertId: 'sched_' + s.id + '_' + nowIso,  // Unique per run; dedup is now via DELETE
+      json: {
+        shift_id: s.id,
+        user_id: s.user_id || null,
+        user_name: userMap[s.user_id] || null,
+        location_id: s.location_id || null,
+        role_id: s.role_id || null,
+        department_id: s.department_id || null,
+        scheduled_start: s.start,
+        scheduled_end: s.end,
+        scheduled_hours: hours,
+        shift_date: shiftDate,
+        status: status,
+        archived_at: nowIso
+      }
+    });
+  }
+
+  if (bqRows.length === 0) return true;
+
+  // ---- DELETE existing rows for affected dates ----
+  // Build a quoted list of dates: "DATE('2026-05-06'), DATE('2026-05-07'), ..."
+  var dateList = Object.keys(datesAffected)
+    .map(function(d) { return "DATE('" + d + "')"; })
+    .join(', ');
+
+  var deleteSql =
+    'DELETE FROM `' + WS_TP_PROJECT + '.' + WS_TP_DATASET + '.' + WS_SS_TABLE + '` ' +
+    'WHERE shift_date IN (' + dateList + ')';
+
+  try {
+    var deleteJob = BigQuery.Jobs.query(
+      { query: deleteSql, useLegacySql: false },
+      WS_TP_PROJECT
+    );
+    var rowsDeleted = (deleteJob && deleteJob.numDmlAffectedRows) ? deleteJob.numDmlAffectedRows : '0';
+    Logger.log('[BigQuery] Deleted ' + rowsDeleted + ' existing scheduled_shifts rows for ' + Object.keys(datesAffected).length + ' date(s)');
+  } catch(e) {
+    Logger.log('[BigQuery] scheduled_shifts DELETE FAILED: ' + e.toString());
+    // Streaming-buffer block is the most likely cause. Caller should TRUNCATE.
+    return false;
+  }
+
+  // ---- INSERT the fresh batch ----
+  try {
+    var result = BigQuery.Tabledata.insertAll({ rows: bqRows }, WS_TP_PROJECT, WS_TP_DATASET, WS_SS_TABLE);
+    if (result && result.insertErrors && result.insertErrors.length > 0) {
+      Logger.log('[BigQuery] scheduled_shifts insertErrors: ' + JSON.stringify(result.insertErrors).substring(0, 500));
+      return false;
+    }
+    Logger.log('[BigQuery] Archived ' + bqRows.length + ' scheduled shifts (replacing prior rows for affected dates)');
+    return true;
+  } catch(e) {
+    Logger.log('[BigQuery] scheduled_shifts archive FAILED: ' + e.toString());
+    return false;
+  }
+}
+
+
+/**
+ * One-time backfill of N days of historical scheduled shifts.
+ * Run from the Apps Script editor.
+ *
+ * @param {number} days - How many days back to pull (default 30)
+ */
+function ws_backfillScheduledShifts(days) {
+  days = days || 30;
+
+  var endDate = new Date();
+  var startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
+
+  var startISO = Utilities.formatDate(startDate, 'UTC', "yyyy-MM-dd'T'HH:mm:ss'Z'");
+  var endISO = Utilities.formatDate(endDate, 'UTC', "yyyy-MM-dd'T'HH:mm:ss'Z'");
+
+  Logger.log('Backfilling scheduled shifts: ' + startISO + ' → ' + endISO);
+
+  var shifts = ws_pullScheduledShifts(startISO, endISO);
+  if (shifts.length === 0) {
+    Logger.log('No scheduled shifts found in date range');
+    return { archived: 0, total: 0 };
+  }
+
+  var userMap = ws_get7shiftsUserMap(true);  // force refresh on backfill
+
+  // Batch in chunks of 200 (BigQuery insertAll limit considerations)
+  var BATCH_SIZE = 200;
+  var totalArchived = 0;
+  var failedBatches = 0;
+
+  for (var start = 0; start < shifts.length; start += BATCH_SIZE) {
+    var batch = shifts.slice(start, start + BATCH_SIZE);
+    Logger.log('Archiving batch ' + (start / BATCH_SIZE + 1) + ' (' + batch.length + ' shifts)...');
+    var ok = ws_archiveScheduledShiftsToBigQuery(batch, userMap);
+    if (ok) {
+      totalArchived += batch.length;
+    } else {
+      failedBatches++;
+    }
+    Utilities.sleep(500);
+  }
+
+  Logger.log('Backfill complete. ' + totalArchived + ' / ' + shifts.length + ' shifts. Failed batches: ' + failedBatches);
+  return { archived: totalArchived, total: shifts.length, failedBatches: failedBatches };
+}
+
+
+/**
+ * Daily sync entry point — pulls yesterday's scheduled shifts.
+ * Designed to run as a daily trigger at ~1:15 AM Mountain (right after time_punches).
+ */
+function ws_dailyScheduledShiftsSync() {
+  var now = new Date();
+  // Yesterday's window in Mountain Time
+  var yesterdayMT = Utilities.formatDate(new Date(now.getTime() - 24 * 60 * 60 * 1000), 'America/Denver', 'yyyy-MM-dd');
+  var todayMT     = Utilities.formatDate(now, 'America/Denver', 'yyyy-MM-dd');
+
+  var startISO = yesterdayMT + 'T00:00:00-07:00';
+  var endISO   = todayMT + 'T00:00:00-07:00';
+
+  Logger.log('Daily scheduled shifts sync: ' + startISO + ' → ' + endISO);
+
+  var shifts = ws_pullScheduledShifts(startISO, endISO);
+  if (shifts.length === 0) {
+    Logger.log('No scheduled shifts yesterday');
+    return { archived: 0 };
+  }
+
+  var ok = ws_archiveScheduledShiftsToBigQuery(shifts);
+  return { archived: ok ? shifts.length : 0, ok: ok };
+}
+
+
+/**
+ * 6 AM retry guard — checks BigQuery for yesterday's scheduled_shifts row count.
+ * If zero, primary 1:15 AM sync presumably failed; re-run it.
+ * Cheap COUNT query — same pattern as time_punches retry.
+ */
+function ws_dailyScheduledShiftsSyncRetry() {
+  var yesterdayMT = Utilities.formatDate(
+    new Date(Date.now() - 24 * 60 * 60 * 1000),
+    'America/Denver',
+    'yyyy-MM-dd'
+  );
+
+  var sql =
+    'SELECT COUNT(*) AS n ' +
+    'FROM `' + WS_TP_PROJECT + '.' + WS_TP_DATASET + '.' + WS_SS_TABLE + '` ' +
+    'WHERE shift_date = DATE("' + yesterdayMT + '")';
+
+  try {
+    var queryResult = BigQuery.Jobs.query(
+      { query: sql, useLegacySql: false },
+      WS_TP_PROJECT
+    );
+
+    var count = 0;
+    if (queryResult && queryResult.rows && queryResult.rows.length > 0) {
+      count = parseInt(queryResult.rows[0].f[0].v, 10) || 0;
+    }
+
+    if (count > 0) {
+      var msg = 'Primary scheduled-shifts sync OK — ' + count + ' shifts archived for ' + yesterdayMT;
+      Logger.log(msg);
+      return msg;
+    }
+
+    Logger.log('No scheduled shifts in BQ for ' + yesterdayMT + ' — running retry sync');
+    var retryResult = ws_dailyScheduledShiftsSync();
+    var retryMsg = 'Retry sync ran — archived: ' + retryResult.archived;
+    Logger.log(retryMsg);
+    return retryMsg;
+  } catch (e) {
+    Logger.log('ws_dailyScheduledShiftsSyncRetry error: ' + e.toString());
+    // On error, run the sync anyway as a defensive fallback
+    var fallback = ws_dailyScheduledShiftsSync();
+    return 'Retry check errored, ran sync anyway. Archived: ' + fallback.archived;
+  }
+}
+
+
+/**
+ * Install daily 1:15 AM Mountain trigger + 6 AM retry trigger for scheduled shifts.
+ * Idempotent — removes any existing triggers for these handlers first.
+ */
+function ws_installScheduledShiftsTriggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var removed = 0;
+  for (var i = 0; i < triggers.length; i++) {
+    var fn = triggers[i].getHandlerFunction();
+    if (fn === 'ws_dailyScheduledShiftsSync' || fn === 'ws_dailyScheduledShiftsSyncRetry') {
+      ScriptApp.deleteTrigger(triggers[i]);
+      removed++;
+    }
+  }
+  if (removed > 0) Logger.log('Removed ' + removed + ' existing scheduled-shifts trigger(s)');
+
+  var primary = ScriptApp.newTrigger('ws_dailyScheduledShiftsSync')
+    .timeBased()
+    .atHour(1)
+    .nearMinute(15)
+    .everyDays(1)
+    .create();
+  Logger.log('Primary scheduled-shifts sync trigger installed: ' + primary.getUniqueId() + ' (~1:15 AM Mountain)');
+
+  var retry = ScriptApp.newTrigger('ws_dailyScheduledShiftsSyncRetry')
+    .timeBased()
+    .atHour(6)
+    .nearMinute(0)
+    .everyDays(1)
+    .create();
+  Logger.log('Retry scheduled-shifts sync trigger installed: ' + retry.getUniqueId() + ' (~6 AM Mountain)');
+
+  return {
+    primary: primary.getUniqueId(),
+    retry: retry.getUniqueId()
+  };
+}
+function listAllTriggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  Logger.log('Total triggers: ' + triggers.length);
+  for (var i = 0; i < triggers.length; i++) {
+    var t = triggers[i];
+    var src = t.getTriggerSource();
+    var event = t.getEventType();
+    Logger.log((i+1) + '. ' + t.getHandlerFunction() + ' [' + event + '] uid=' + t.getUniqueId());
+  }
+}
+function listAllTriggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  Logger.log('Total triggers: ' + triggers.length);
+  for (var i = 0; i < triggers.length; i++) {
+    var t = triggers[i];
+    var event = t.getEventType();
+    Logger.log((i+1) + '. ' + t.getHandlerFunction() + ' [' + event + '] uid=' + t.getUniqueId());
+  }
+}
